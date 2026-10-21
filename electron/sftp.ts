@@ -24,18 +24,20 @@ interface Job { info: FileTransfer; controller: AbortController; run: () => Prom
 interface Plan { source: string; destination: string; directory: boolean; size: number }
 export class SftpService {
   private channels = new Map<string, Promise<SFTPWrapper>>();
+  private compatibility = new Set<string>();
   private jobs = new Map<string, Job>();
   private running = 0;
   private eventTimers = new Map<string, NodeJS.Timeout>();
-  constructor(private getClient: (id: string) => Client, private emit: (event: AppEvent) => void) {}
+  constructor(private getClient: (id: string) => Client, private emit: (event: AppEvent) => void, private separateClient?: (id: string) => Promise<Client>, private closeSeparate?: (id: string) => void) {}
   transfers(id: string) { return structuredClone([...this.jobs.values()].map(j => j.info).filter(t => t.sessionId === id)); }
   private publish(id: string, immediate = false) {
     if (immediate) { clearTimeout(this.eventTimers.get(id)); this.eventTimers.delete(id); this.emit({ type: 'transfers', sessionId: id, data: this.transfers(id) }); }
     else if (!this.eventTimers.has(id)) this.eventTimers.set(id, setTimeout(() => { this.eventTimers.delete(id); this.emit({ type: 'transfers', sessionId: id, data: this.transfers(id) }); }, 150));
   }
   private closedChannels = new WeakSet<SFTPWrapper>();
-  private openChannel(id: string): Promise<SFTPWrapper> {
-    const client = this.getClient(id);
+  private async openChannel(id: string, separate = false): Promise<SFTPWrapper> {
+    if (separate) this.closeSeparate?.(id);
+    const client = separate ? await this.separateClient!(id) : this.getClient(id);
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => done(new Error('开启 SFTP 超时，请确认服务器已启用 SFTP 子系统')), 20000);
       let settled = false;
@@ -51,7 +53,17 @@ export class SftpService {
   private async channel(id: string): Promise<SFTPWrapper> {
     this.getClient(id);
     if (!this.channels.has(id)) {
-      const opening = this.openChannel(id); this.channels.set(id, opening);
+      const separate = async () => {
+        try { return await this.openChannel(id, true); }
+        catch (separateError) { this.closeSeparate?.(id); throw new Error(`复用 SSH 通道被拒绝；独立 SFTP 连接也未成功：${failure(separateError)}。请核对设备 SFTP 服务、账号授权及 SSH 连接数限制。`); }
+      };
+      const opening = this.compatibility.has(id) ? separate() : this.openChannel(id).catch(async error => {
+        // Some network devices reject a second session channel after a shell
+        // has opened. Retry only channel-open rejection, once, on a new SSH
+        // transport; never retry a file write or an authentication failure.
+        if (!this.separateClient || !/Channel open failure/i.test(failure(error))) throw error;
+        this.compatibility.add(id); return separate();
+      }); this.channels.set(id, opening);
       void opening.then(sftp => sftp.once('close', () => { if (this.channels.get(id) === opening) this.channels.delete(id); })).catch(() => { if (this.channels.get(id) === opening) this.channels.delete(id); });
     }
     return this.channels.get(id)!;
@@ -137,7 +149,12 @@ export class SftpService {
     }
   }
   private async transfer(job: Job, source: string, destination: string, overwrite: boolean) {
-    const { info, controller } = job, signal = controller.signal, sftp = await this.openChannel(info.sessionId), plan: Plan[] = [];
+    const { info, controller } = job, signal = controller.signal, plan: Plan[] = [];
+    let shared = this.compatibility.has(info.sessionId);
+    const sftp = shared ? await this.channel(info.sessionId) : await this.openChannel(info.sessionId).catch(error => {
+      if (!this.separateClient || !/Channel open failure/i.test(failure(error))) throw error;
+      shared = true; this.compatibility.add(info.sessionId); return this.channel(info.sessionId);
+    });
     const inspect = async (src: string, dst: string, depth: number) => {
       signal.throwIfAborted(); if (depth > 32 || plan.length >= 10000) throw new Error('文件夹传输最多 32 层、10000 个条目，请分批传输');
       const stats = info.direction === 'upload' ? await fs.lstat(src) : await this.request<Stats>(sftp, done => sftp.lstat(src, done), signal);
@@ -171,7 +188,7 @@ export class SftpService {
         }
       } else { await this.copyFile(job, sftp, item, overwrite); info.completed++; this.publish(info.sessionId); }
     }
-    } finally { sftp.end(); }
+    } finally { if (!shared) sftp.end(); }
   }
   private async copyFile(job: Job, sftp: SFTPWrapper, item: Plan, overwrite: boolean) {
     const { info, controller } = job, signal = controller.signal, uploading = info.direction === 'upload';
@@ -232,8 +249,10 @@ export class SftpService {
     job.info.status = 'cancelled'; job.info.message = '已取消传输'; this.publish(job.info.sessionId, true);
   }
   closeSession(id: string) {
+    this.compatibility.delete(id);
     for (const job of this.jobs.values()) if (job.info.sessionId === id && active(job.info)) this.cancel(job.info.id);
     const channel = this.channels.get(id); this.channels.delete(id); void channel?.then(sftp => sftp.end()).catch(() => {});
+    this.closeSeparate?.(id);
     clearTimeout(this.eventTimers.get(id)); this.eventTimers.delete(id);
   }
   dispose() { for (const id of this.channels.keys()) this.closeSession(id); for (const job of this.jobs.values()) if (active(job.info)) this.cancel(job.info.id); }

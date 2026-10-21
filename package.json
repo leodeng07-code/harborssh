@@ -1,6 +1,6 @@
 {
   "name": "harborssh",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "private": true,
   "description": "Harbor SSH — Windows 批量 SSH 与隧道管理工具",
   "author": "Harbor SSH",

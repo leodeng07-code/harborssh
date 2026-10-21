@@ -3,7 +3,7 @@ import ssh2 from 'ssh2';
 import { promises as fs, type Stats } from 'node:fs';
 import path from 'node:path';
 
-export interface SftpFixtureOptions { root: string; writeDelay?: number; deny?: string; channels?: { count: number } }
+export interface SftpFixtureOptions { root: string; writeDelay?: number; deny?: string; channels?: { count: number }; singleSession?: boolean }
 export function attachSftp(session: Session, options: SftpFixtureOptions) {
   session.on('sftp', accept => {
     options.channels && options.channels.count++; const s = accept();

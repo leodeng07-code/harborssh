@@ -6,9 +6,9 @@ import { randomBytes, createHash } from 'node:crypto';
 import { Manager } from '../electron/manager';
 import { localName, remoteName } from '../electron/sftp';
 import type { FileTransfer } from '../shared/types';
-import { profile, sshFixture, tempStore, until } from './helpers';
+import { freePort, profile, sshFixture, tempStore, until } from './helpers';
 
-async function setup(options: { writeDelay?: number; deny?: string } = {}) {
+async function setup(options: { writeDelay?: number; deny?: string; singleSession?: boolean } = {}) {
   const temp = await tempStore(); const remote = path.join(temp.directory, 'remote'); const local = path.join(temp.directory, 'local'); const downloaded = path.join(temp.directory, 'downloads');
   for (const dir of [remote, local, downloaded]) await fs.mkdir(dir);
   const channels = { count: 0 }, fixture = await sshFixture({ root: remote, channels, ...options }); const events: FileTransfer[][] = [];
@@ -30,6 +30,7 @@ test('SFTP shares SSH client: UTF-8 directories, metadata, mkdir, rename, empty-
     const removed = await t.manager.sftp.remove(t.id, ['/新文件夹', '/missing.txt']); assert.equal(removed[0].error, undefined); assert.ok(removed[1].error);
     t.manager.write(t.id, 'sftp-and-shell\r'); await until(() => t.manager.readTerminal(t.id).data.some(c => Buffer.from(c, 'base64').toString().includes('sftp-and-shell')));
     assert.equal(t.manager.snapshot().sessions.length, 1); assert.equal(t.channels.count, 1);
+    assert.equal(t.fixture.connectionCount(), 1);
   } finally { await t.close(); }
 });
 
@@ -108,4 +109,50 @@ test('servers without an SFTP subsystem report a file-panel error while the SSH 
     assert.equal(manager.snapshot().sessions[0].status, 'connected'); manager.write(id, 'sftp-unavailable-shell-ok\r');
     await until(() => manager.readTerminal(id).data.some(c => Buffer.from(c, 'base64').toString().includes('sftp-unavailable-shell-ok')));
   } finally { manager.dispose(); await fixture.close(); await temp.cleanup(); }
+});
+
+test('single-channel SSH devices use a verified separate SFTP transport, transfer binary files and close both connections', async () => {
+  const t = await setup({ singleSession: true });
+  try {
+    const profileId = t.manager.snapshot().sessions[0].profileId;
+    await t.store.saveProfile({ profile: { ...t.store.profile(profileId), port: await freePort() } });
+    const content = randomBytes(128 * 1024 + 37), source = path.join(t.local, '交换机兼容.bin'); await fs.writeFile(source, content);
+    const [a, b] = await Promise.all([t.manager.sftp.list(t.id, '.'), t.manager.sftp.list(t.id, '.')]); assert.deepEqual(a, b);
+    assert.equal(t.fixture.connectionCount(), 2); assert.equal(t.channels.count, 1);
+    await t.manager.sftp.upload(t.id, [source], '/', false); await idle(t); assert.equal(t.manager.sftp.transfers(t.id)[0].status, 'success');
+    await t.manager.sftp.download(t.id, ['/交换机兼容.bin'], t.downloaded, false); await idle(t);
+    assert.equal(digest(await fs.readFile(path.join(t.downloaded, '交换机兼容.bin'))), digest(content));
+    t.manager.write(t.id, 'separate-sftp-shell-still-active\r'); await until(() => t.manager.readTerminal(t.id).data.some(c => Buffer.from(c, 'base64').toString().includes('separate-sftp-shell-still-active')));
+    assert.equal(t.manager.snapshot().sessions[0].status, 'connected');
+    t.manager.disconnect(t.id); await until(() => t.fixture.connectionCount() === 0);
+  } finally { await t.close(); }
+});
+
+test('dedicated SFTP fallback verifies host identity and rejects it without closing the terminal', async () => {
+  const temp = await tempStore(), remote = path.join(temp.directory, 'remote'); await fs.mkdir(remote);
+  const fixture = await sshFixture({ root: remote, singleSession: true }); let verifications = 0;
+  const manager = new Manager(temp.store, () => {}, async () => ++verifications === 1);
+  try {
+    const p = profile(fixture.port); await temp.store.saveProfile({ profile: p, secrets: { password: 'test-secret' } });
+    const id = manager.startSession(p.id); await until(() => manager.snapshot().sessions[0]?.status === 'connected');
+    await assert.rejects(manager.sftp.list(id, '.'), /独立 SFTP/); assert.equal(verifications, 2);
+    await until(() => fixture.connectionCount() === 1); assert.equal(manager.snapshot().sessions[0].status, 'connected');
+    manager.write(id, 'terminal-after-rejected-fingerprint\r'); await until(() => manager.readTerminal(id).data.some(chunk => Buffer.from(chunk, 'base64').toString().includes('terminal-after-rejected-fingerprint')));
+  } finally { manager.dispose(); await fixture.close(); await temp.cleanup(); }
+});
+
+test('single-channel compatibility keeps concurrent transfers independent when one is cancelled', async () => {
+  const t = await setup({ singleSession: true, writeDelay: 45 });
+  try {
+    const a = path.join(t.local, 'cancel.bin'), b = path.join(t.local, 'keep.bin'), content = randomBytes(256 * 1024 + 1);
+    await fs.writeFile(a, randomBytes(1024 * 1024)); await fs.writeFile(b, content);
+    await t.manager.sftp.upload(t.id, [a, b], '/', false);
+    await until(() => t.manager.sftp.transfers(t.id).some(job => job.name === 'cancel.bin' && job.bytes > 0));
+    const cancelled = t.manager.sftp.transfers(t.id).find(job => job.name === 'cancel.bin')!; t.manager.sftp.cancel(cancelled.id); await idle(t);
+    assert.equal(t.manager.sftp.transfers(t.id).find(job => job.name === 'cancel.bin')!.status, 'cancelled');
+    assert.equal(t.manager.sftp.transfers(t.id).find(job => job.name === 'keep.bin')!.status, 'success');
+    assert.equal(digest(await fs.readFile(path.join(t.remote, 'keep.bin'))), digest(content));
+    await until(() => !readdirSync(t.remote).some(name => name.endsWith('.part')));
+    assert.equal(t.fixture.connectionCount(), 2); assert.equal(t.manager.snapshot().sessions[0].status, 'connected');
+  } finally { await t.close(); }
 });

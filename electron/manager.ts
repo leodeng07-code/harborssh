@@ -15,7 +15,7 @@ import { batchCompletion } from './batch-result';
 import { SessionLogs } from './session-logs';
 import { SystemMonitor } from './system-monitor';
 
-interface Resource { closed: boolean; client?: Client; server?: Server; streams: Set<Duplex>; cancel?: () => void; onCancel?: () => void; onFailure?: (reason: string) => void }
+interface Resource { closed: boolean; profile?: Profile; client?: Client; server?: Server; streams: Set<Duplex>; cancel?: () => void; onCancel?: () => void; onFailure?: (reason: string) => void }
 const resource = (): Resource => ({ closed: false, streams: new Set() });
 function stop(r: Resource) {
   if (r.closed) return;
@@ -29,6 +29,7 @@ export class Manager {
   private logs: SessionLogs;
   private sessions = new Map<string, SessionInfo>();
   private sessionResources = new Map<string, Resource>();
+  private fileResources = new Map<string, { resource: Resource; pending: Promise<Client> }>();
   private shells = new Map<string, ClientChannel>();
   private buffers = new Map<string, { seq: number; bytes: number; chunks: { seq: number; data: string; bytes: number }[] }>();
   private tunnelStates = new Map<string, TunnelInfo>();
@@ -42,7 +43,7 @@ export class Manager {
       const session = this.sessions.get(id); if (session) { session.log = log; this.schedulePublish(); }
       if (log.status === 'error') this.emit({ type: 'notice', message: log.message!, error: true });
     });
-    this.sftp = new SftpService(id => { const r = this.sessionResources.get(id); if (!r?.client || r.closed || this.sessions.get(id)?.status !== 'connected') throw new Error('请先连接 SSH 终端'); return r.client; }, emit);
+    this.sftp = new SftpService(id => { const r = this.sessionResources.get(id); if (!r?.client || r.closed || this.sessions.get(id)?.status !== 'connected') throw new Error('请先连接 SSH 终端'); return r.client; }, emit, id => this.separateSftpClient(id), id => this.closeSeparateSftp(id));
     this.system = new SystemMonitor(id => { const r = this.sessionResources.get(id); if (!r?.client || r.closed || this.sessions.get(id)?.status !== 'connected') throw new Error('请先连接 SSH 终端'); return r.client; });
   }
   snapshot(): RuntimeSnapshot { return structuredClone({ sessions: [...this.sessions.values()], tunnels: [...this.tunnelStates.values()], jobs: this.jobs }); }
@@ -53,8 +54,8 @@ export class Manager {
     r.streams.add(stream); stream.once('close', () => r.streams.delete(stream));
     stream.on('error', () => {});
   }
-  private async dial(profileId: string, r: Resource): Promise<Client> {
-    const p = this.store.profile(profileId);
+  private async dial(profileId: string, r: Resource, original?: Profile): Promise<Client> {
+    const p = original || this.store.profile(profileId);
     const secrets = await this.store.secrets(profileId);
     const config: ConnectConfig = {
       host: p.host, port: p.port, username: p.username, readyTimeout: 90_000,
@@ -94,7 +95,7 @@ export class Manager {
   startSession(profileId: string): string {
     const p = this.store.profile(profileId);
     if (this.sessionResources.size >= 100) throw new Error('最多同时打开 100 个终端，请先关闭部分标签');
-    const id = randomUUID(); const r = resource();
+    const id = randomUUID(); const r = resource(); r.profile = structuredClone(p);
     const info: SessionInfo = { id, profileId, name: p.name, status: 'connecting' };
     this.sessions.set(id, info); this.sessionResources.set(id, r);
     this.buffers.set(id, { seq: 0, bytes: 0, chunks: [] });
@@ -138,6 +139,22 @@ export class Manager {
   }
   readTerminal(id: string): TerminalBuffer {
     const b = this.buffers.get(id); return { seq: b?.seq || 0, data: b?.chunks.map(c => c.data) || [] };
+  }
+  private separateSftpClient(id: string): Promise<Client> {
+    const session = this.sessions.get(id), parent = this.sessionResources.get(id);
+    if (!session || session.status !== 'connected' || !parent || parent.closed) return Promise.reject(new Error('请先连接 SSH 终端'));
+    const existing = this.fileResources.get(id); if (existing && !existing.resource.closed) return existing.pending;
+    const r = resource();
+    const cleanup = () => { stop(r); if (this.fileResources.get(id)?.resource === r) this.fileResources.delete(id); };
+    r.onFailure = cleanup;
+    const pending = this.dial(session.profileId, r, parent.profile).then(client => {
+      if (r.closed || parent.closed || this.sessions.get(id)?.status !== 'connected') { cleanup(); throw new Error('SSH 会话已断开'); }
+      return client;
+    }).catch(error => { cleanup(); throw error; });
+    this.fileResources.set(id, { resource: r, pending }); return pending;
+  }
+  private closeSeparateSftp(id: string) {
+    const entry = this.fileResources.get(id); if (entry) { stop(entry.resource); this.fileResources.delete(id); }
   }
   write(id: string, data: string) { const s = this.shells.get(id); if (s && !s.destroyed && data.length <= 1024 * 1024) s.write(data); }
   resize(id: string, cols: number, rows: number) {
@@ -304,6 +321,7 @@ export class Manager {
   dispose() {
     this.system.dispose();
     this.sftp.dispose();
+    for (const id of this.fileResources.keys()) this.closeSeparateSftp(id);
     for (const r of this.sessionResources.values()) stop(r);
     for (const id of this.sessions.keys()) this.logs.finish(id, '软件退出');
     for (const r of this.tunnelResources.values()) stop(r);

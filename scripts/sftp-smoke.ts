@@ -13,7 +13,7 @@ for (const dir of [remote, local, downloads]) await fs.mkdir(dir);
 await fs.mkdir(path.join(remote, '服务器文档')); await fs.writeFile(path.join(remote, 'README.txt'), 'SFTP 和终端共享 SSH 连接');
 const content = randomBytes(512 * 1024 + 7), source = path.join(local, '上传验证.bin'); await fs.writeFile(source, content);
 const folder = path.join(local, '项目文件夹'); await fs.mkdir(path.join(folder, '子目录'), { recursive: true }); await fs.writeFile(path.join(folder, '子目录', '配置.txt'), '中文文件夹传输');
-const fixture = await sshFixture({ root: remote, writeDelay: 35 }); const env = { ...process.env, DISPLAY: process.env.DISPLAY || ':0', HARBOR_TEST_DATA: directory }; delete env.ELECTRON_RUN_AS_NODE;
+const fixture = await sshFixture({ root: remote, writeDelay: 35, singleSession: process.env.HARBOR_SFTP_SINGLE_CHANNEL === '1' }); const env = { ...process.env, DISPLAY: process.env.DISPLAY || ':0', HARBOR_TEST_DATA: directory }; delete env.ELECTRON_RUN_AS_NODE;
 let app: Awaited<ReturnType<typeof electron.launch>> | undefined;
 try {
   app = await electron.launch({ args: [process.env.HARBOR_SMOKE_APP || '.', '--no-sandbox', '--ozone-platform=x11'], env, timeout: 20000 });

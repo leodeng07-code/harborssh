@@ -30,7 +30,9 @@ export async function sshFixture(sftpOptions?: SftpFixtureOptions, execHandler?:
     peers.add(client); client.on('error', () => {}); client.once('close', () => peers.delete(client));
     client.on('authentication', ctx => { if (ctx.username === 'tester' && (ctx.method === 'password' && ctx.password === 'test-secret' || ctx.method === 'publickey')) ctx.accept(); else ctx.reject(); });
     client.on('ready', () => {
-      client.on('session', accept => {
+      let sessions = 0;
+      client.on('session', (accept, reject) => {
+        if (sftpOptions?.singleSession && sessions++) { reject(); return; }
         const session = accept(); if (sftpOptions) attachSftp(session, sftpOptions);
         session.on('pty', (accept, _reject, info) => { sizes.push({ cols: info.cols, rows: info.rows }); accept?.(); });
         session.on('window-change', (accept, _reject, info) => { sizes.push({ cols: info.cols, rows: info.rows }); accept?.(); });
