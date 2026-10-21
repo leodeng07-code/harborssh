@@ -1,0 +1,56 @@
+import { _electron as electron } from 'playwright';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
+
+const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'harborssh-ui-'));
+const env = { ...process.env, DISPLAY: process.env.DISPLAY || ':0', HARBOR_TEST_DATA: directory };
+delete env.ELECTRON_RUN_AS_NODE;
+let app;
+try {
+  app = await electron.launch({ args: [process.env.HARBOR_SMOKE_APP || '.', '--no-sandbox', '--ozone-platform=x11'], env, timeout: 20000 });
+  const page = await app.firstWindow();
+  const errors = []; page.on('pageerror', error => errors.push(error.message));
+  await page.getByRole('heading', { name: '设置软件密码', exact: true }).waitFor();
+  await page.getByLabel('软件密码', { exact: true }).fill('desktop-fixture-password');
+  await page.getByLabel('确认软件密码', { exact: true }).fill('desktop-fixture-password');
+  await page.getByRole('button', { name: '设置密码并进入', exact: true }).click();
+  await page.getByRole('heading', { name: '连接管理', exact: true }).waitFor();
+  await fs.mkdir('test-results', { recursive: true });
+  await page.screenshot({ path: 'test-results/01-home.png' });
+  await page.getByRole('button', { name: '新建连接', exact: true }).click();
+  await page.getByLabel('连接名称', { exact: true }).fill('开发服务器');
+  await page.getByLabel('主机地址', { exact: true }).fill('192.0.2.10');
+  await page.getByLabel('密码', { exact: true }).fill('temporary-test-password');
+  await page.screenshot({ path: 'test-results/02-profile-form.png' });
+  await page.getByRole('button', { name: '保存连接', exact: true }).click();
+  await page.getByRole('heading', { name: '开发服务器', exact: true }).waitFor();
+  await page.getByRole('button', { name: '编辑 开发服务器', exact: true }).click();
+  if (await page.getByLabel('密码', { exact: true }).inputValue()) throw new Error('Stored credentials leaked to edit form');
+  await page.getByRole('button', { name: '取消', exact: true }).click();
+  await page.getByRole('checkbox', { name: '选择 开发服务器', exact: true }).check();
+  await page.getByRole('button', { name: '批量执行', exact: true }).last().click();
+  await page.getByRole('textbox', { name: '批量执行的命令' }).fill('hostname && uptime');
+  await page.screenshot({ path: 'test-results/03-batch.png' });
+  await page.getByRole('button', { name: 'SSH 隧道', exact: true }).click();
+  await page.getByRole('button', { name: '新建隧道', exact: true }).click();
+  await page.getByLabel('隧道名称', { exact: true }).fill('数据库隧道');
+  await page.getByRole('button', { name: '动态 SOCKS5', exact: true }).click();
+  await page.screenshot({ path: 'test-results/04-tunnel-form.png' });
+  await page.getByRole('button', { name: '保存隧道', exact: true }).click();
+  await page.getByRole('heading', { name: /数据库隧道/ }).waitFor();
+  await page.screenshot({ path: 'test-results/05-tunnels.png' });
+  await page.getByRole('button', { name: '偏好设置', exact: true }).click();
+  await page.getByLabel('终端字号').selectOption('16');
+  await page.getByRole('button', { name: '连接管理', exact: true }).click();
+  await page.getByRole('button', { name: '删除 开发服务器', exact: true }).click();
+  await page.getByRole('button', { name: '确认删除', exact: true }).click();
+  await page.getByRole('button', { name: '添加第一台主机', exact: true }).waitFor();
+  const saved = JSON.parse(await fs.readFile(path.join(directory, 'config.json'), 'utf8'));
+  if (saved.profiles.length || saved.tunnels.length || Object.keys(saved.credentials).length) throw new Error('Delete did not clean related configuration');
+  if (errors.length) throw new Error(errors.join('\n'));
+  console.log('Electron UI smoke passed: create, edit, select, batch form, SOCKS5 configuration, settings, cascading delete.');
+} finally {
+  if (app) await app.close();
+  await fs.rm(directory, { recursive: true, force: true });
+}

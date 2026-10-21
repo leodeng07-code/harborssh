@@ -1,0 +1,67 @@
+import { _electron as electron } from 'playwright';
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import assert from 'node:assert/strict';
+import { profile, sshFixture } from '../tests/helpers';
+import { snmpFixture, testMappings } from '../tests/snmp-fixture';
+import { poll } from './poll.mjs';
+
+const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'harborssh-network-ui-'));
+const fixture = await snmpFixture(), ssh = await sshFixture();
+const env = { ...process.env, DISPLAY: process.env.DISPLAY || ':0', HARBOR_TEST_DATA: directory }; delete env.ELECTRON_RUN_AS_NODE;
+let app: Awaited<ReturnType<typeof electron.launch>> | undefined;
+try {
+  app = await electron.launch({ args: [process.env.HARBOR_SMOKE_APP || '.', '--no-sandbox', '--ozone-platform=x11'], env, timeout: 20000 });
+  await app.evaluate(({ dialog }) => { dialog.showMessageBox = async () => ({ response: 1, checkboxChecked: false }); });
+  const page = await app.firstWindow(); const errors: string[] = []; page.on('pageerror', e => errors.push(e.message));
+  await page.getByLabel('软件密码', { exact: true }).fill('network-test-password'); await page.getByLabel('确认软件密码', { exact: true }).fill('network-test-password');
+  await page.getByRole('button', { name: '设置密码并进入' }).click();
+  await page.getByRole('heading', { name: '连接管理', exact: true }).waitFor();
+  const p = profile(ssh.port, { name: 'SNMP 本机协议验证' });
+  await page.evaluate(p => window.harbor!.saveProfile({ profile: p, secrets: { password: 'test-secret' } }), p);
+  await page.reload(); await page.getByRole('button', { name: '网络管理', exact: true }).click();
+  assert.equal(await page.getByRole('button', { name: '读取接口', exact: true }).isDisabled(), true);
+  await page.getByRole('button', { name: 'SNMP 配置', exact: true }).click();
+  const modal = page.getByRole('dialog');
+  await modal.getByLabel('UDP 端口', { exact: true }).fill(String(fixture.port));
+  await modal.getByLabel('只读 Community', { exact: true }).fill('fixture-read'); await modal.getByLabel('读写 Community（可选）', { exact: true }).fill('fixture-write');
+  await modal.getByRole('button', { name: '保存配置', exact: true }).click(); await modal.waitFor({ state: 'hidden' });
+  await page.getByRole('button', { name: '读取接口', exact: true }).click(); await page.getByText('GE0/0/7', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'SNMP 配置', exact: true }).click();
+  assert.equal(await modal.getByLabel('只读 Community', { exact: true }).inputValue(), ''); assert.equal(await modal.getByLabel('读写 Community（可选）', { exact: true }).inputValue(), '');
+  await modal.getByRole('button', { name: '取消', exact: true }).click();
+  await page.getByRole('button', { name: 'MIB 适配', exact: true }).click();
+  for (const mapping of testMappings) {
+    const name = { speed: '速率配置', duplex: '双工配置', vlanMode: 'VLAN 模式', pvid: 'PVID' }[mapping.field];
+    await modal.getByLabel(`${name} OID`, { exact: true }).fill(mapping.oid);
+    await modal.getByLabel(`${name}枚举`, { exact: true }).fill(mapping.choices.map(c => `${c.label}=${c.value}`).join('\n'));
+  }
+  const isScrollable = await modal.locator('.network-form').evaluate(el => el.scrollHeight > el.clientHeight); assert.equal(isScrollable, true);
+  await modal.getByRole('button', { name: '保存适配', exact: true }).click(); await modal.waitFor({ state: 'hidden' });
+  await page.getByRole('button', { name: '读取接口', exact: true }).click(); await page.getByText('GE0/0/7', { exact: true }).waitFor();
+  await page.getByRole('button', { name: '修改', exact: true }).click();
+  await modal.getByLabel('接口参数新值').fill('界面修改验证'); await modal.getByRole('button', { name: '核对并提交' }).click(); await modal.waitFor({ state: 'hidden' });
+  await page.getByText('界面修改验证', { exact: true }).waitFor();
+  await page.getByRole('button', { name: '修改', exact: true }).click(); await modal.getByLabel('接口修改参数').selectOption('speed');
+  await modal.getByLabel('接口参数新值', { exact: true }).selectOption('1000'); await modal.getByRole('button', { name: '核对并提交' }).click(); await modal.waitFor({ state: 'hidden' }); await page.getByText('GE0/0/7', { exact: true }).waitFor();
+  await page.getByRole('button', { name: '修改', exact: true }).click(); await modal.getByLabel('接口修改参数').selectOption('pvid');
+  await modal.getByLabel('接口参数新值').fill('30'); await modal.getByRole('button', { name: '核对并提交' }).click(); await modal.waitFor({ state: 'hidden' }); await page.locator('.interface-table td', { hasText: /^30/ }).waitFor();
+  await page.getByLabel('查询 MAC 地址').fill('aabb.ccdd.eeff'); await page.getByRole('button', { name: '查询当前设备', exact: true }).click();
+  await page.locator('.mac-results').getByText('GE0/0/7', { exact: true }).waitFor();
+  assert.match(await page.locator('.mac-results').innerText(), /动态学习/); assert.match(await page.locator('.mac-results').innerText(), /20/); assert.match(await page.locator('.mac-results').innerText(), /77/);
+  await fs.mkdir('test-results', { recursive: true }); await page.screenshot({ path: 'test-results/14-network-interfaces.png' });
+  await page.setViewportSize({ width: 1040, height: 700 });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+  await page.screenshot({ path: 'test-results/15-network-small.png' });
+  await page.getByRole('button', { name: 'SNMP 配置', exact: true }).click(); assert.equal(await modal.getByLabel('只读 Community', { exact: true }).inputValue(), ''); await modal.getByRole('button', { name: '取消', exact: true }).click();
+  await page.evaluate(async id => { await window.harbor!.runBatch({ profileIds: [id], command: 'no-exit', concurrency: 1, timeout: 5 }); }, p.id);
+  await page.getByRole('button', { name: '批量执行', exact: true }).last().click();
+  await page.locator('.result-status.unconfirmed').waitFor(); await page.locator('.result-row').click(); await page.getByText(/设备未返回 SSH 退出码/).waitFor();
+  assert.match(await page.locator('.result-summary').innerText(), /1 待确认/); assert.match(await page.locator('.result-summary').innerText(), /0 失败/);
+  await page.screenshot({ path: 'test-results/16-batch-unconfirmed.png' });
+  const disk = await fs.readFile(path.join(directory, 'config.json'), 'utf8'); assert.ok(!disk.includes('fixture-read') && !disk.includes('fixture-write'));
+  const configText = await page.evaluate(async () => JSON.stringify((await window.harbor!.initial()).config)); assert.ok(!configText.includes('fixture-read') && !configText.includes('fixture-write'));
+  assert.deepEqual(errors, []);
+  console.log('Network desktop smoke passed: masked encrypted communities, interface reads, scrollable MIB mapping, native-confirmed alias/speed/PVID SET + readback, MAC→bridge→ifIndex/VLAN, small layout and unconfirmed batch UI.');
+} finally { if (app) await app.close(); await fixture.close(); await ssh.close(); await fs.rm(directory, { recursive: true, force: true }); }

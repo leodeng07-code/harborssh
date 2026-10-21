@@ -1,0 +1,103 @@
+{
+  "name": "harborssh",
+  "version": "0.5.2",
+  "private": true,
+  "description": "Harbor SSH — Windows 批量 SSH 与隧道管理工具",
+  "author": "Harbor SSH",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist-electron/main.cjs",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "tsc --noEmit && node scripts/build.mjs",
+    "preview": "vite --host 127.0.0.1",
+    "test": "tsx --test tests/*.test.ts",
+    "dist:win": "npm run build && electron-builder --win dir --x64 && node scripts/portable.mjs && node scripts/installer.mjs",
+    "dist:linux": "npm run build && electron-builder --linux dir",
+    "check": "tsc --noEmit",
+    "test:ui": "node scripts/smoke.mjs",
+    "test:desktop": "tsx scripts/desktop-integration.ts",
+    "test:groups": "node scripts/groups-smoke.mjs",
+    "test:security": "tsx scripts/security-smoke.ts",
+    "test:sftp": "tsx scripts/sftp-smoke.ts",
+    "test:network": "tsx scripts/network-smoke.ts",
+    "test:clipboard": "tsx scripts/clipboard-smoke.ts"
+  },
+  "dependencies": {
+    "exceljs": "4.4.0",
+    "net-snmp": "3.29.2",
+    "ssh2": "1.17.0"
+  },
+  "build": {
+    "appId": "io.harborssh.desktop",
+    "productName": "Harbor SSH",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "assets/**/*",
+      "package.json",
+      "README.md"
+    ],
+    "asar": true,
+    "npmRebuild": false,
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "assets/icon.ico",
+      "signAndEditExecutable": false,
+      "artifactName": "HarborSSH-${version}-windows-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "Harbor SSH",
+      "artifactName": "HarborSSH-${version}-setup-${arch}.exe",
+      "script": "build/installer.nsi",
+      "installerLanguages": [
+        "zh_CN"
+      ]
+    },
+    "linux": {
+      "target": [
+        "dir"
+      ],
+      "icon": "assets/icon.png"
+    }
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "@types/net-snmp": "3.23.0",
+    "@types/node": "26.6.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@types/ssh2": "1.15.6",
+    "@types/yauzl": "3.4.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/addon-search": "0.16.0",
+    "@xterm/xterm": "6.0.0",
+    "electron": "44.9.2",
+    "electron-builder": "26.15.3",
+    "esbuild": "0.28.2",
+    "jszip": "3.10.2",
+    "lucide-react": "1.60.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2",
+    "vite": "8.3.4",
+    "yauzl": "3.4.0",
+    "zod": "4.6.7"
+  },
+  "overrides": {
+    "uuid": "11.1.1"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

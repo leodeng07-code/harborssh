@@ -1,0 +1,53 @@
+import { contextBridge, ipcRenderer } from 'electron';
+import type { DesktopAPI, AppEvent } from '../shared/types';
+
+const api: DesktopAPI = {
+  lockStatus: () => ipcRenderer.invoke('harbor:lock-status'),
+  setupPassword: password => ipcRenderer.invoke('harbor:password-setup', password),
+  unlock: password => ipcRenderer.invoke('harbor:unlock', password),
+  changePassword: (current, next) => ipcRenderer.invoke('harbor:password-change', current, next),
+  initial: () => ipcRenderer.invoke('harbor:initial'),
+  saveProfile: input => ipcRenderer.invoke('harbor:profile-save', input),
+  deleteProfile: id => ipcRenderer.invoke('harbor:profile-delete', id),
+  deleteProfiles: ids => ipcRenderer.invoke('harbor:profiles-delete', ids),
+  saveTunnel: tunnel => ipcRenderer.invoke('harbor:tunnel-save', tunnel),
+  deleteTunnel: id => ipcRenderer.invoke('harbor:tunnel-delete', id),
+  connect: id => ipcRenderer.invoke('harbor:connect', id),
+  disconnect: id => ipcRenderer.invoke('harbor:disconnect', id),
+  write: (id, data) => ipcRenderer.send('harbor:write', id, data),
+  resize: (id, cols, rows) => ipcRenderer.send('harbor:resize', id, cols, rows),
+  readTerminal: id => ipcRenderer.invoke('harbor:terminal-read', id),
+  chooseLogDirectory: () => ipcRenderer.invoke('harbor:log-directory-choose'),
+  openLogDirectory: () => ipcRenderer.invoke('harbor:log-directory-open'),
+  sftpList: (id, directory) => ipcRenderer.invoke('harbor:sftp-list', id, directory),
+  sftpUpload: (id, directory, folder, overwrite) => ipcRenderer.invoke('harbor:sftp-upload', id, directory, folder, overwrite),
+  sftpDownload: (id, paths, overwrite) => ipcRenderer.invoke('harbor:sftp-download', id, paths, overwrite),
+  sftpMkdir: (id, directory, name) => ipcRenderer.invoke('harbor:sftp-mkdir', id, directory, name),
+  sftpRename: (id, path, name) => ipcRenderer.invoke('harbor:sftp-rename', id, path, name),
+  sftpDelete: (id, paths) => ipcRenderer.invoke('harbor:sftp-delete', id, paths),
+  sftpTransfers: id => ipcRenderer.invoke('harbor:sftp-transfers', id),
+  sftpCancel: id => ipcRenderer.invoke('harbor:sftp-cancel', id),
+  startTunnel: id => ipcRenderer.invoke('harbor:tunnel-start', id),
+  stopTunnel: id => ipcRenderer.invoke('harbor:tunnel-stop', id),
+  runBatch: request => ipcRenderer.invoke('harbor:batch-run', request),
+  cancelBatch: id => ipcRenderer.invoke('harbor:batch-cancel', id),
+  snmpConfigure: input => ipcRenderer.invoke('harbor:snmp-configure', input),
+  snmpInterfaces: id => ipcRenderer.invoke('harbor:snmp-interfaces', id),
+  snmpChange: input => ipcRenderer.invoke('harbor:snmp-change', input),
+  snmpMac: (id, mac) => ipcRenderer.invoke('harbor:snmp-mac', id, mac),
+  pickKey: () => ipcRenderer.invoke('harbor:pick-key'),
+  importPreview: () => ipcRenderer.invoke('harbor:import-preview'),
+  importCommit: (token, rows, remember, fillMissing) => ipcRenderer.invoke('harbor:import-commit', token, rows, remember, fillMissing),
+  importCancel: token => ipcRenderer.invoke('harbor:import-cancel', token),
+  saveTemplate: () => ipcRenderer.invoke('harbor:template-save'),
+  exportConfig: () => ipcRenderer.invoke('harbor:export'),
+  resetTrust: id => ipcRenderer.invoke('harbor:reset-trust', id),
+  copy: text => ipcRenderer.invoke('harbor:copy', text),
+  paste: () => ipcRenderer.invoke('harbor:paste'),
+  window: action => ipcRenderer.send('harbor:window', action),
+  onEvent: callback => {
+    const listener = (_event: Electron.IpcRendererEvent, payload: AppEvent) => callback(payload);
+    ipcRenderer.on('harbor:event', listener); return () => ipcRenderer.removeListener('harbor:event', listener);
+  },
+};
+contextBridge.exposeInMainWorld('harbor', api);

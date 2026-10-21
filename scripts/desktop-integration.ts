@@ -1,0 +1,68 @@
+import { _electron as electron } from 'playwright';
+import { poll } from './poll.mjs';
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
+import os from 'node:os';
+import assert from 'node:assert/strict';
+import ExcelJS from 'exceljs';
+import { freePort, profile, sshFixture } from '../tests/helpers';
+
+const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'harborssh-desktop-'));
+const fixture = await sshFixture();
+const env = { ...process.env, DISPLAY: process.env.DISPLAY || ':0', HARBOR_TEST_DATA: directory };
+delete env.ELECTRON_RUN_AS_NODE;
+let app: Awaited<ReturnType<typeof electron.launch>> | undefined;
+try {
+  app = await electron.launch({ args: [process.env.HARBOR_SMOKE_APP || '.', '--no-sandbox', '--ozone-platform=x11'], env, timeout: 20000 });
+  await app.evaluate(({ dialog }) => { dialog.showMessageBox = async () => ({ response: 1, checkboxChecked: false }); });
+  const page = await app.firstWindow(); const errors: string[] = []; page.on('pageerror', err => errors.push(err.message));
+  await page.getByRole('heading', { name: '设置软件密码', exact: true }).waitFor();
+  await page.getByLabel('软件密码', { exact: true }).fill('desktop-fixture-password');
+  await page.getByLabel('确认软件密码', { exact: true }).fill('desktop-fixture-password');
+  await page.getByRole('button', { name: '设置密码并进入', exact: true }).click();
+  await page.getByRole('heading', { name: '连接管理', exact: true }).waitFor();
+  const p = profile(fixture.port, { name: '本机 SSH 集成测试' });
+  await page.evaluate(async p => { await window.harbor!.saveProfile({ profile: p, secrets: { password: 'test-secret' } }); }, p);
+  await page.reload(); await page.getByRole('heading', { name: p.name, exact: true }).waitFor();
+  await page.getByRole('button', { name: '连接', exact: true }).click();
+  await page.getByText('已连接', { exact: true }).last().waitFor();
+  await page.locator('.terminal-container').click(); await page.keyboard.insertText('hello-from-ui'); await page.keyboard.press('Enter');
+  await poll(page, async () => {
+    const state = await window.harbor!.initial(); const s = state.runtime.sessions[0]; if (!s) return false;
+    const buffer = await window.harbor!.readTerminal(s.id); return buffer.data.some(data => atob(data).includes('hello-from-ui'));
+  });
+  await fs.mkdir('test-results', { recursive: true }); await page.screenshot({ path: 'test-results/06-live-terminal.png' });
+  await page.getByRole('button', { name: '连接管理', exact: true }).click();
+  await page.getByRole('checkbox', { name: `选择 ${p.name}`, exact: true }).check();
+  await page.getByRole('button', { name: '批量执行', exact: true }).last().click();
+  await page.getByRole('textbox', { name: '批量执行的命令' }).fill('hostname');
+  await page.getByRole('button', { name: '在 1 台主机执行', exact: true }).click();
+  await page.locator('.result-status.success').waitFor(); await page.locator('.result-row').click();
+  await page.getByText('主机结果: hostname', { exact: true }).waitFor();
+  await page.screenshot({ path: 'test-results/07-live-batch.png' });
+  await page.getByRole('button', { name: 'SSH 隧道', exact: true }).click(); await page.getByRole('button', { name: '新建隧道', exact: true }).click();
+  await page.getByLabel('隧道名称', { exact: true }).fill('本地回环转发验证');
+  const port = await freePort();
+  await page.getByLabel('监听端口', { exact: true }).fill(String(port)); await page.getByLabel('目标端口', { exact: true }).fill(String(fixture.echoPort));
+  await page.getByRole('button', { name: '保存隧道', exact: true }).click(); await page.getByRole('button', { name: '启动', exact: true }).click();
+  await page.getByText('运行中', { exact: true }).waitFor();
+  await page.screenshot({ path: 'test-results/08-live-tunnel.png' });
+  await page.getByRole('button', { name: '停止', exact: true }).click(); await page.getByText('已停止', { exact: true }).waitFor();
+  const importFile = path.join(directory, 'connections.xlsx'); const wb = new ExcelJS.Workbook();
+  wb.addWorksheet('连接列表').addRows([['连接名称', '主机地址', '端口', '用户名', '密码', '分组'], ['Excel 导入测试', '192.0.2.56', 22, 'admin', 'secret-import-001', '导入分组'], ['非法端口', '192.0.2.57', 90000, 'root', 'should-not-import', '']]);
+  await wb.xlsx.writeFile(importFile);
+  await app.evaluate(({ dialog }, file) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [file] }); }, importFile);
+  await page.getByRole('button', { name: '连接管理', exact: true }).click(); await page.getByRole('button', { name: '导入 Excel', exact: true }).last().click();
+  const modal = page.getByRole('dialog'); await modal.getByRole('heading', { name: '导入 SSH 连接', exact: true }).waitFor();
+  assert.ok(!(await modal.textContent())?.includes('secret-import-001'));
+  await page.screenshot({ path: 'test-results/09-excel-preview.png' });
+  await modal.getByRole('button', { name: '导入 1 条连接', exact: true }).click(); await page.getByRole('heading', { name: 'Excel 导入测试', exact: true }).waitFor();
+  const finalState = await page.evaluate(() => window.harbor!.initial()); assert.equal(finalState.config.profiles.length, 2);
+  assert.equal(finalState.runtime.jobs[0].results[0].status, 'success'); assert.equal(finalState.runtime.tunnels[0].status, 'stopped');
+  await page.setViewportSize({ width: 1040, height: 700 }); await page.screenshot({ path: 'test-results/10-small-window.png' });
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth); assert.equal(overflow, false);
+  assert.deepEqual(errors, []);
+  console.log('Electron integration passed: renderer IPC, trusted SSH login, terminal keyboard IO, batch execution, tunnel lifecycle, native Excel selection, validation preview, import and 1040×700 layout.');
+} finally {
+  if (app) await app.close(); await fixture.close(); await fs.rm(directory, { recursive: true, force: true });
+}

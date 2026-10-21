@@ -1,0 +1,91 @@
+import { _electron as electron } from 'playwright';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
+import assert from 'node:assert/strict';
+import ExcelJS from 'exceljs';
+
+const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'harborssh-groups-'));
+const env = { ...process.env, DISPLAY: process.env.DISPLAY || ':0', HARBOR_TEST_DATA: directory };
+delete env.ELECTRON_RUN_AS_NODE;
+let app;
+try {
+  app = await electron.launch({ args: [process.env.HARBOR_SMOKE_APP || '.', '--no-sandbox', '--ozone-platform=x11'], env, timeout: 20000 });
+  const page = await app.firstWindow(); const errors = []; page.on('pageerror', err => errors.push(err.message));
+  await page.getByRole('heading', { name: '设置软件密码', exact: true }).waitFor();
+  await page.getByLabel('软件密码', { exact: true }).fill('desktop-fixture-password');
+  await page.getByLabel('确认软件密码', { exact: true }).fill('desktop-fixture-password');
+  await page.getByRole('button', { name: '设置密码并进入', exact: true }).click();
+  await page.getByRole('heading', { name: '连接管理', exact: true }).waitFor();
+  await page.getByRole('button', { name: '新建连接', exact: true }).click();
+  await page.getByLabel('连接名称', { exact: true }).fill('上海办公交换机');
+  await page.getByLabel('主机地址', { exact: true }).fill('192.0.2.10');
+  await page.getByLabel('密码', { exact: true }).fill('group-test-password');
+  await page.getByLabel('设备类型（一级）', { exact: true }).fill('交换机');
+  await page.getByLabel('地点（二级）', { exact: true }).fill('上海');
+  await page.getByLabel('网络类型（三级）', { exact: true }).fill('办公网');
+  await fs.mkdir('test-results', { recursive: true });
+  await page.screenshot({ path: 'test-results/12-groups-form.png' });
+  await page.getByRole('button', { name: '保存连接', exact: true }).click();
+  await page.getByRole('heading', { name: '上海办公交换机', exact: true }).waitFor();
+  const first = await page.evaluate(async () => (await window.harbor.initial()).config.profiles[0]);
+  assert.deepEqual(first.groupPath, ['交换机', '上海', '办公网']);
+  const seeds = [
+    ['上海生产交换机', '192.0.2.11', ['交换机', '上海', '生产网']],
+    ['北京办公交换机', '192.0.2.12', ['交换机', '北京', '办公网']],
+    ['上海办公防火墙', '192.0.2.13', ['防火墙', '上海', '办公网']],
+    ['交换机核心前缀测试', '192.0.2.14', ['交换机核心', '上海', '办公网']],
+  ];
+  await page.evaluate(async ({ first, seeds }) => { for (const [name, host, groupPath] of seeds) await window.harbor.saveProfile({ profile: { ...first, id: crypto.randomUUID(), name, host, groupPath, group: groupPath.join(' / '), hasSecret: false } }); }, { first, seeds });
+  await page.reload();
+  await page.getByRole('button', { name: '选择分组 交换机', exact: true }).click();
+  assert.equal(await page.locator('.profile-card').count(), 3);
+  assert.equal(await page.getByRole('button', { name: '选择分组 交换机', exact: true }).locator('.group-count').textContent(), '3');
+  await page.getByRole('button', { name: '选择分组 交换机 / 上海', exact: true }).click();
+  assert.equal(await page.locator('.profile-card').count(), 2);
+  await page.getByRole('button', { name: '选择分组 交换机 / 上海 / 办公网', exact: true }).click();
+  assert.equal(await page.locator('.profile-card').count(), 1);
+  assert.equal(await page.locator('.list-title h3').textContent(), '交换机 / 上海 / 办公网');
+  await page.getByRole('button', { name: '新建连接', exact: true }).click();
+  assert.equal(await page.getByLabel('设备类型（一级）', { exact: true }).inputValue(), '交换机');
+  assert.equal(await page.getByLabel('地点（二级）', { exact: true }).inputValue(), '上海');
+  assert.equal(await page.getByLabel('网络类型（三级）', { exact: true }).inputValue(), '办公网');
+  await page.getByRole('button', { name: '取消', exact: true }).click();
+  await page.getByRole('button', { name: '折叠分组 交换机', exact: true }).click();
+  assert.equal(await page.getByRole('button', { name: '选择分组 交换机 / 上海', exact: true }).count(), 0);
+  await page.getByRole('button', { name: '展开分组 交换机', exact: true }).click();
+  await page.getByRole('button', { name: '选择分组 交换机', exact: true }).click();
+  await page.screenshot({ path: 'test-results/11-groups-tree.png' });
+  await page.getByRole('checkbox', { name: '选择所有显示的连接', exact: true }).check();
+  await page.getByRole('button', { name: '批量执行', exact: true }).last().click();
+  await page.getByRole('button', { name: '在 3 台主机执行', exact: true }).waitFor();
+  await page.getByRole('button', { name: '连接管理', exact: true }).click();
+  await page.getByRole('button', { name: '编辑 上海办公交换机', exact: true }).click();
+  await page.getByLabel('地点（二级）', { exact: true }).fill('深圳');
+  await page.getByRole('button', { name: '保存连接', exact: true }).click();
+  await page.getByRole('button', { name: '选择分组 交换机 / 深圳 / 办公网', exact: true }).click();
+  assert.equal(await page.locator('.profile-card').count(), 1);
+  const saved = JSON.parse(await fs.readFile(path.join(directory, 'config.json'), 'utf8'));
+  assert.deepEqual(saved.profiles.find(p => p.id === first.id).groupPath, ['交换机', '深圳', '办公网']);
+  const importFile = path.join(directory, 'grouped-import.xlsx'); const wb = new ExcelJS.Workbook();
+  wb.addWorksheet('连接列表').addRows([['连接名称', '主机地址', '用户名', '设备类型', '地点', '网络类型'], ['广州管理路由器', '192.0.2.15', 'admin', '路由器', '广州', '管理网']]);
+  await wb.xlsx.writeFile(importFile);
+  await app.evaluate(({ dialog }, filename) => { dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [filename] }); }, importFile);
+  await page.getByRole('button', { name: '导入 Excel', exact: true }).last().click();
+  const modal = page.getByRole('dialog'); await modal.getByText('路由器 / 广州 / 管理网', { exact: true }).waitFor();
+  await page.screenshot({ path: 'test-results/13-group-import.png' });
+  await modal.getByRole('button', { name: '导入 1 条连接', exact: true }).click();
+  await page.getByRole('button', { name: '选择分组 路由器 / 广州 / 管理网', exact: true }).click();
+  assert.equal(await page.locator('.profile-card').count(), 1);
+  await page.reload();
+  await page.getByRole('button', { name: '选择分组 交换机 / 深圳 / 办公网', exact: true }).waitFor();
+  const exportFile = path.join(directory, 'export.xlsx');
+  await app.evaluate(({ dialog }, filename) => { dialog.showSaveDialog = async () => ({ canceled: false, filePath: filename }); }, exportFile);
+  assert.equal(await page.evaluate(() => window.harbor.exportConfig()), true);
+  const exported = new ExcelJS.Workbook(); await exported.xlsx.readFile(exportFile);
+  const sheet = exported.getWorksheet('连接列表');
+  assert.deepEqual([sheet.getCell('I1').value, sheet.getCell('J1').value, sheet.getCell('K1').value], ['设备类型', '地点', '网络类型']);
+  assert.deepEqual([sheet.getCell('I2').value, sheet.getCell('J2').value, sheet.getCell('K2').value], ['交换机', '深圳', '办公网']);
+  assert.deepEqual(errors, []);
+  console.log('Three-level group UI passed: create, cascade suggestions, parent/leaf filtering, counts, collapse, inherited paths, batch selection, re-grouping, persistence, Excel preview/import and export.');
+} finally { if (app) await app.close(); await fs.rm(directory, { recursive: true, force: true }); }

@@ -1,0 +1,105 @@
+/* Keep full device names visible at every supported interface font size. */
+:root { line-height:1.55 }
+.profile-collection.grid { grid-template-columns:repeat(auto-fill,minmax(min(100%,340px),1fr));align-items:stretch }
+.profile-card { display:flex;flex-direction:column }
+.profile-identity { align-items:flex-start;padding:16px 18px 20px;gap:14px }
+.profile-identity>div:last-child { flex:1;min-width:0 }
+.profile-identity h3 { white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;line-height:1.65;font-size:1rem;font-weight:600;margin-bottom:10px }
+.profile-icon { margin-top:3px }
+.profile-identity .mono { white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;line-height:1.7 }
+.profile-card-top { padding:13px 16px 7px }
+.profile-card-top .icon-button { width:30px;height:30px }
+.profile-card-bottom { margin-top:auto;flex-wrap:wrap;gap:10px 12px;padding:13px 16px;line-height:1.6 }
+.profile-group { max-width:none;flex:1 1 170px;white-space:normal;align-items:flex-start;overflow:visible }
+.profile-group>svg { flex-shrink:0;margin-top:4px }
+.profile-group-path { white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere }
+.auth-tag,.connect-link { flex-shrink:0 }
+.profile-collection.list .profile-card { flex-direction:row;gap:14px;align-items:flex-start }
+.list .profile-card-top { padding-top:20px }
+.list .profile-identity { min-width:0;padding:17px 0 }
+.list .profile-card-bottom { flex:0 1 240px;min-width:0;max-width:40%;padding-block:18px;margin-top:0;gap:10px }
+.list .profile-group { max-width:none;flex-basis:100% }
+.list-toolbar { flex-wrap:wrap;gap:12px }
+.list-title { flex:1 1 240px }
+.list-title h3 { max-width:none;white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere;line-height:1.65 }
+.list-tools { flex-shrink:0 }
+.sidebar { width:260px;min-width:260px }
+.sidebar-search { min-height:40px }
+.sidebar-item { min-height:42px;line-height:1.65 }
+.group-name { white-space:normal;overflow-wrap:anywhere;text-overflow:clip;line-height:1.65 }
+.group-tree-button { padding-block:9px }
+.group-tree-row { min-height:38px }
+.group-tree-row .group-count { padding-left:5px }
+.group-tree .group-tree { margin-left:10px }
+.group-tree-button>svg,.sidebar-item>svg,.stat-icon { flex-shrink:0 }
+.page-heading { flex-wrap:wrap }
+.heading-actions { flex-wrap:wrap }
+.settings-section { flex-wrap:wrap }
+.settings-section>div:nth-child(2) { flex:1;min-width:200px }
+.settings-icon { flex-shrink:0 }
+.font-size-picker { flex-shrink:0 }
+.stat { min-width:0 }
+.stat>div:last-child { min-width:0 }
+.terminal-toolbar { min-height:42px;height:auto;padding-block:5px;gap:10px }
+.terminal-bottom { flex-wrap:wrap;gap:4px 16px;line-height:1.7 }
+.terminal-bottom>span:last-child { min-width:0;overflow-wrap:anywhere }
+.terminal-tab { max-width:320px;height:44px }
+.terminal-tabs { height:44px;min-height:44px }
+.terminal-search { top:46px }
+.theme-picker { grid-template-columns:repeat(auto-fit,minmax(150px,1fr)) }
+.theme-option small { padding-right:8px;line-height:1.7 }
+.network-toolbar { gap:12px;align-items:flex-start }
+.network-toolbar select { max-width:min(480px,100%);width:100% }
+.network-toolbar>label { max-width:100%;flex:1 1 280px }
+.interface-tools { flex-wrap:wrap;gap:10px }
+.interface-tools label { flex:1;min-width:200px }
+.interface-tools input { width:100%;min-width:0 }
+.sftp-actions { flex-wrap:wrap }
+.sftp-connection { overflow-wrap:anywhere }
+.shortcut-list { width:100%;min-width:0;gap:14px }
+.shortcut-list span { gap:16px;flex-wrap:wrap }
+@media(max-width:1250px) {
+  .sidebar { width:238px;min-width:238px }
+  .stat { padding-inline:12px;gap:8px }
+  .stat-icon { width:30px;height:32px }
+  .page-heading { padding:22px 20px }
+  .page-body { padding-inline:20px }
+  .topbar { padding-inline:20px }
+  .terminal-workspace { margin-inline:16px }
+  .list .profile-card-bottom { flex-basis:200px;max-width:38% }
+  .list .profile-identity { gap:10px }
+  .list .profile-icon { display:none }
+  .terminal-toolbar .mono { display:none }
+}
+
+.log-directory-label { display:block;margin-top:16px;color:var(--muted);font-size:.9231rem }
+.log-directory { display:block;margin-top:8px;padding:12px 14px;border:1px solid var(--border);border-radius:6px;background:var(--inset);color:var(--text);overflow-wrap:anywhere;white-space:normal;line-height:1.8 }
+.settings-section .log-settings-note { margin-top:14px }
+.terminal-log { display:inline-flex;align-items:center;gap:6px;flex-shrink:0;color:var(--accent) }
+.terminal-log.error { color:var(--rose) }
+.terminal-bottom>span.terminal-log { display:inline-flex }
+@media(max-height:800px) {
+  .excel-promo { display:none }
+  .sidebar-bottom { padding-top:0 }
+  .workspace-picker { padding-bottom:14px }
+  .sidebar-search { margin-bottom:14px }
+  .sidebar-section { margin-bottom:14px }
+  .sidebar .sidebar-section.groups { margin-bottom:8px }
+  .session-links { max-height:150px }
+}
+
+/* File controls may scroll in short windows; keep both files and transfers visible. */
+.sftp-controls { flex:0 1 auto;min-height:40px;max-height:45%;overflow:auto hidden;overflow-y:auto;overflow-x:hidden }
+.sftp-file-list { flex:1 1 90px;min-height:50px }
+.transfer-section { flex:0 0 30%;min-height:110px;max-height:40%;overflow:hidden }
+.transfer-section>header { flex-shrink:0 }
+.transfer-list { flex:1;min-height:0 }
+.sftp-directory-foot { flex-wrap:wrap;gap:4px 10px }
+.sftp-error { flex:0 1 auto;min-height:0;max-height:70px;overflow:auto }
+@media(max-height:800px) {
+  .view-terminal>.page-heading { padding:14px 20px;gap:12px }
+  .view-terminal .page-heading .eyebrow,.view-terminal .page-heading p { display:none }
+  .view-terminal .page-heading h1 { font-size:1.4rem }
+  .view-terminal .heading-actions { padding-top:0 }
+  .view-terminal .terminal-workspace { margin-bottom:10px }
+}
