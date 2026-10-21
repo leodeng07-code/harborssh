@@ -20,10 +20,11 @@ export async function tempStore() {
   const store = new Store(directory, vault);
   await store.load(); return { store, vault, directory, cleanup: () => { vault.lock(); return fs.rm(directory, { recursive: true, force: true }); } };
 }
-export async function sshFixture(sftpOptions?: SftpFixtureOptions) {
+export async function sshFixture(sftpOptions?: SftpFixtureOptions, execHandler?: (command: string, stream: ServerChannel) => boolean) {
   const hostKey = generateKeyPairSync('rsa', { modulusLength: 2048, privateKeyEncoding: { format: 'pem', type: 'pkcs1' }, publicKeyEncoding: { format: 'pem', type: 'pkcs1' } }).privateKey;
   const peers = new Set<Connection>(); const sockets = new Set<Socket>(); const servers = new Set<Server>(); const sizes: { rows: number; cols: number }[] = [];
   const shellStreams = new Set<ServerChannel>(); const received: Buffer[] = [];
+  const execCommands: string[] = [];
   const track = (s: Socket) => { sockets.add(s); s.on('error', () => {}); s.once('close', () => sockets.delete(s)); return s; };
   const server = new ssh2.Server({ hostKeys: [hostKey] }, client => {
     peers.add(client); client.on('error', () => {}); client.once('close', () => peers.delete(client));
@@ -41,6 +42,7 @@ export async function sshFixture(sftpOptions?: SftpFixtureOptions) {
         });
         session.on('exec', (accept, _reject, info) => {
           const stream = accept(); stream.on('error', () => {});
+          execCommands.push(info.command); if (execHandler?.(info.command, stream)) return;
           if (info.command === 'hang') return;
           if (info.command === 'no-exit') { stream.write('Interface output\r\nHRP_S<fixture>\r\n'); stream.end(); return; }
           if (info.command === 'exit-then-disconnect') { stream.write('complete\n'); stream.exit(0); setTimeout(() => client.end(), 30); return; }
@@ -75,7 +77,7 @@ export async function sshFixture(sftpOptions?: SftpFixtureOptions) {
   await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
   const port = (server.address() as net.AddressInfo).port;
   const echo = net.createServer(socket => { track(socket); socket.pipe(socket); }); const echoPort = await portOf(echo);
-  return { port, echoPort, sizes, received, endTerminals: () => { for (const stream of shellStreams) stream.end(); }, sendToTerminals: (data: string) => { for (const stream of shellStreams) stream.write(data); }, close: async () => {
+  return { port, echoPort, sizes, received, execCommands, connectionCount: () => peers.size, endTerminals: () => { for (const stream of shellStreams) stream.end(); }, sendToTerminals: (data: string) => { for (const stream of shellStreams) stream.write(data); }, close: async () => {
     for (const peer of peers) peer.end(); for (const socket of sockets) socket.destroy(); for (const listener of servers) listener.close();
     await Promise.all([new Promise<void>(resolve => echo.close(() => resolve())), new Promise<void>(resolve => server.close(() => resolve()))]);
   } };

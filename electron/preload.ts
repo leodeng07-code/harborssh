@@ -17,6 +17,7 @@ const api: DesktopAPI = {
   write: (id, data) => ipcRenderer.send('harbor:write', id, data),
   resize: (id, cols, rows) => ipcRenderer.send('harbor:resize', id, cols, rows),
   readTerminal: id => ipcRenderer.invoke('harbor:terminal-read', id),
+  readSystem: id => ipcRenderer.invoke('harbor:system-read', id),
   chooseLogDirectory: () => ipcRenderer.invoke('harbor:log-directory-choose'),
   openLogDirectory: () => ipcRenderer.invoke('harbor:log-directory-open'),
   sftpList: (id, directory) => ipcRenderer.invoke('harbor:sftp-list', id, directory),

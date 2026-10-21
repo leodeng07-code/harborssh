@@ -1,6 +1,6 @@
 {
   "name": "harborssh",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "private": true,
   "description": "Harbor SSH — Windows 批量 SSH 与隧道管理工具",
   "author": "Harbor SSH",
@@ -21,7 +21,8 @@
     "test:security": "tsx scripts/security-smoke.ts",
     "test:sftp": "tsx scripts/sftp-smoke.ts",
     "test:network": "tsx scripts/network-smoke.ts",
-    "test:clipboard": "tsx scripts/clipboard-smoke.ts"
+    "test:clipboard": "tsx scripts/clipboard-smoke.ts",
+    "test:system": "tsx scripts/system-smoke.ts"
   },
   "dependencies": {
     "exceljs": "4.4.0",

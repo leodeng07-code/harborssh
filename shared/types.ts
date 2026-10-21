@@ -36,6 +36,10 @@ export interface RemoteFile { name: string; path: string; type: 'directory' | 'f
 export interface RemoteDirectory { path: string; entries: RemoteFile[] }
 export interface FileTransfer { id: string; sessionId: string; name: string; direction: 'upload' | 'download'; status: 'queued' | 'preparing' | 'running' | 'success' | 'error' | 'cancelled'; bytes: number; total: number; files: number; completed: number; destination: string; message?: string }
 export interface TerminalBuffer { seq: number; data: string[] }
+export interface SystemMemory { total: number; used: number; available: number; percent: number; estimated?: boolean }
+export interface SystemDisk { device: string; mount: string; total: number; used: number; available: number; percent: number }
+export interface SystemNetwork { name: string; received: number; sent: number; receiveRate?: number; sendRate?: number }
+export interface SystemSnapshot { sessionId: string; platform: 'linux' | 'unsupported'; reason?: string; readAt: number; hostname?: string; release?: string; kernel?: string; cores?: number; uptime?: number; load?: number[]; cpuPercent?: number; memory?: SystemMemory; swap?: SystemMemory; disks: SystemDisk[]; networks: SystemNetwork[]; warnings: string[] }
 export interface ImportRow { row: number; name: string; host: string; port: number; username: string; group: string; authType: string; hasSecret: boolean; duplicate: boolean; canFillSecret?: boolean; error?: string }
 export interface ImportPreview { token: string; filename: string; rows: ImportRow[] }
 export interface BatchRequest { profileIds: string[]; command: string; concurrency: number; timeout: number }
@@ -55,6 +59,7 @@ export interface DesktopAPI {
   write(id: string, data: string): void;
   resize(id: string, cols: number, rows: number): void;
   readTerminal(id: string): Promise<TerminalBuffer>;
+  readSystem(id: string): Promise<SystemSnapshot>;
   chooseLogDirectory(): Promise<Config | null>;
   openLogDirectory(): Promise<void>;
   sftpList(sessionId: string, path: string): Promise<RemoteDirectory>;

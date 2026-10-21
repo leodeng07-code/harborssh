@@ -85,6 +85,7 @@ function registerIPC() {
     manager.disconnect(id);
   });
   handle('harbor:terminal-read', id => manager.readTerminal(idSchema.parse(id)));
+  handle('harbor:system-read', id => manager.system.read(idSchema.parse(id)));
   handle('harbor:log-directory-choose', async () => {
     const result = await dialog.showOpenDialog(win, { title: '选择终端日志保存目录', defaultPath: store.config().terminalLogDirectory, properties: ['openDirectory', 'createDirectory'] });
     if (result.canceled || !result.filePaths[0]) return null;

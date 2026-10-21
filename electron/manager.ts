@@ -13,6 +13,7 @@ import { message } from './validation';
 import { SftpService } from './sftp';
 import { batchCompletion } from './batch-result';
 import { SessionLogs } from './session-logs';
+import { SystemMonitor } from './system-monitor';
 
 interface Resource { closed: boolean; client?: Client; server?: Server; streams: Set<Duplex>; cancel?: () => void; onCancel?: () => void; onFailure?: (reason: string) => void }
 const resource = (): Resource => ({ closed: false, streams: new Set() });
@@ -24,6 +25,7 @@ function stop(r: Resource) {
 }
 export class Manager {
   readonly sftp: SftpService;
+  readonly system: SystemMonitor;
   private logs: SessionLogs;
   private sessions = new Map<string, SessionInfo>();
   private sessionResources = new Map<string, Resource>();
@@ -41,6 +43,7 @@ export class Manager {
       if (log.status === 'error') this.emit({ type: 'notice', message: log.message!, error: true });
     });
     this.sftp = new SftpService(id => { const r = this.sessionResources.get(id); if (!r?.client || r.closed || this.sessions.get(id)?.status !== 'connected') throw new Error('请先连接 SSH 终端'); return r.client; }, emit);
+    this.system = new SystemMonitor(id => { const r = this.sessionResources.get(id); if (!r?.client || r.closed || this.sessions.get(id)?.status !== 'connected') throw new Error('请先连接 SSH 终端'); return r.client; });
   }
   snapshot(): RuntimeSnapshot { return structuredClone({ sessions: [...this.sessions.values()], tunnels: [...this.tunnelStates.values()], jobs: this.jobs }); }
   private publish() { this.emit({ type: 'runtime', data: this.snapshot() }); }
@@ -98,7 +101,7 @@ export class Manager {
     this.logs.start(id, p, this.store.config().terminalLogDirectory!);
     const fail = (reason: string) => {
       if (r.closed) return;
-      info.status = 'error'; info.message = reason; this.sftp.closeSession(id); stop(r); this.shells.delete(id); this.logs.finish(id, reason); this.publish();
+      info.status = 'error'; info.message = reason; this.system.closeSession(id); this.sftp.closeSession(id); stop(r); this.shells.delete(id); this.logs.finish(id, reason); this.publish();
     };
     r.onFailure = fail;
     this.publish();
@@ -114,7 +117,7 @@ export class Manager {
         stream.on('error', (err: Error) => fail(message(err)));
         stream.once('close', () => {
           if (r.closed) return;
-          info.status = 'closed'; info.message = '远程会话已结束'; this.sftp.closeSession(id); stop(r); this.shells.delete(id); this.logs.finish(id, '远程会话已结束'); this.publish();
+          info.status = 'closed'; info.message = '远程会话已结束'; this.system.closeSession(id); this.sftp.closeSession(id); stop(r); this.shells.delete(id); this.logs.finish(id, '远程会话已结束'); this.publish();
         });
       });
     }).catch(err => fail(message(err)));
@@ -143,6 +146,7 @@ export class Manager {
   }
   disconnect(id: string) {
     this.logs.finish(id, '手动断开');
+    this.system.closeSession(id);
     this.sftp.closeSession(id);
     const r = this.sessionResources.get(id); if (r) stop(r);
     this.sessionResources.delete(id); this.shells.delete(id); this.sessions.delete(id); this.buffers.delete(id); this.publish();
@@ -298,6 +302,7 @@ export class Manager {
   }
   activeCount() { return [...this.sessions.values()].filter(s => s.status === 'connected' || s.status === 'connecting').length + [...this.tunnelStates.values()].filter(t => t.status === 'starting' || t.status === 'running').length + this.jobs.filter(j => j.status === 'running').length; }
   dispose() {
+    this.system.dispose();
     this.sftp.dispose();
     for (const r of this.sessionResources.values()) stop(r);
     for (const id of this.sessions.keys()) this.logs.finish(id, '软件退出');

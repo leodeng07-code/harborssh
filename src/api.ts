@@ -7,13 +7,14 @@ try { previewConfig = JSON.parse(localStorage.getItem('harbor-preview') || '{"pr
 function savePreview() { localStorage.setItem('harbor-preview', JSON.stringify(previewConfig)); return structuredClone(previewConfig); }
 const browser: DesktopAPI = {
   lockStatus: async () => ({ configured: true, unlocked: true }), setupPassword: unavailable, unlock: unavailable, changePassword: unavailable,
-  initial: async () => ({ config: structuredClone(previewConfig), runtime: { sessions: [], tunnels: [], jobs: [] }, version: '0.5.3', secureStorage: false, platform: 'browser' }),
+  initial: async () => ({ config: structuredClone(previewConfig), runtime: { sessions: [], tunnels: [], jobs: [] }, version: '0.5.4', secureStorage: false, platform: 'browser' }),
   saveProfile: async input => { const p = { ...input.profile, hasSecret: false, rememberSecret: false }; previewConfig.profiles = [...previewConfig.profiles.filter(x => x.id !== p.id), p]; return savePreview(); },
   deleteProfile: async id => { previewConfig.profiles = previewConfig.profiles.filter(p => p.id !== id); previewConfig.tunnels = previewConfig.tunnels.filter(t => t.profileId !== id); return savePreview(); },
   deleteProfiles: async ids => { const selected = new Set(ids); previewConfig.profiles = previewConfig.profiles.filter(p => !selected.has(p.id)); previewConfig.tunnels = previewConfig.tunnels.filter(t => !selected.has(t.profileId)); return savePreview(); },
   saveTunnel: async tunnel => { previewConfig.tunnels = [...previewConfig.tunnels.filter(t => t.id !== tunnel.id), tunnel]; return savePreview(); },
   deleteTunnel: async id => { previewConfig.tunnels = previewConfig.tunnels.filter(t => t.id !== id); return savePreview(); },
   connect: unavailable, disconnect: unavailable, write: () => {}, resize: () => {}, readTerminal: unavailable,
+  readSystem: unavailable,
   chooseLogDirectory: unavailable, openLogDirectory: unavailable,
   sftpList: unavailable, sftpUpload: unavailable, sftpDownload: unavailable, sftpMkdir: unavailable, sftpRename: unavailable, sftpDelete: unavailable, sftpTransfers: unavailable, sftpCancel: unavailable,
   startTunnel: unavailable, stopTunnel: unavailable, runBatch: unavailable, cancelBatch: unavailable,
