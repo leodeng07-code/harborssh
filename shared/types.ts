@@ -28,6 +28,8 @@ export interface InterfaceChange { profileId: string; index: number; field: 'adm
 export interface InterfaceChangeResult { verified: boolean; message: string }
 export interface MacMatch { bridgePort: number; ifIndex?: number; interfaceName: string; fdbId?: number; vlans: number[]; source: 'Q-BRIDGE' | 'BRIDGE'; entryStatus?: number }
 export interface MacLookup { profileId: string; host: string; mac: string; matches: MacMatch[]; warnings: string[]; readAt: number }
+export interface LldpNeighbor { key: string; timeMark: number; localPortNumber: number; remoteIndex: number; localPortId: string; localPortDescription: string; chassisId: string; portId: string; portDescription: string; systemName: string; systemDescription: string; managementAddresses: string[]; supportedCapabilities: string[]; enabledCapabilities: string[] }
+export interface LldpSnapshot { profileId: string; host: string; localName: string; available: boolean; neighbors: LldpNeighbor[]; warnings: string[]; readAt: number }
 export interface InitialState { config: Config; runtime: RuntimeSnapshot; version: string; secureStorage: boolean; platform: string }
 export type AppEvent = { type: 'runtime'; data: RuntimeSnapshot } | { type: 'terminal'; id: string; seq: number; data: string } | { type: 'transfers'; sessionId: string; data: FileTransfer[] } | { type: 'notice'; message: string; error?: boolean };
 export interface RemoteFile { name: string; path: string; type: 'directory' | 'file' | 'link' | 'other'; size: number; modified: number; mode: number }
@@ -71,6 +73,7 @@ export interface DesktopAPI {
   snmpInterfaces(profileId: string): Promise<InterfaceSnapshot>;
   snmpChange(input: InterfaceChange): Promise<InterfaceChangeResult>;
   snmpMac(profileId: string, mac: string): Promise<MacLookup>;
+  snmpLldp(profileId: string): Promise<LldpSnapshot>;
   pickKey(): Promise<string | null>;
   importPreview(): Promise<ImportPreview | null>;
   importCommit(token: string, rows: number[], remember: boolean, fillMissing?: boolean): Promise<Config>;

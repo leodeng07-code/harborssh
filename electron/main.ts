@@ -122,6 +122,7 @@ function registerIPC() {
   handle('harbor:snmp-configure', input => store.saveSnmp(snmpConfigSchema.parse(input)));
   handle('harbor:snmp-interfaces', id => snmp.interfaces(idSchema.parse(id)));
   handle('harbor:snmp-mac', (id, mac) => snmp.mac(idSchema.parse(id), z.string().max(64).parse(mac)));
+  handle('harbor:snmp-lldp', id => snmp.lldp(idSchema.parse(id)));
   handle('harbor:snmp-change', async raw => {
     const input = interfaceChangeSchema.parse(raw), p = store.profile(input.profileId);
     const display = (value: number | string) => input.field === 'adminStatus' ? value === 1 ? '启用' : value === 2 ? '停用' : String(value) : String(value) || '（空）';

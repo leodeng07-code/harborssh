@@ -65,10 +65,16 @@ try {
   await page.getByRole('status', { name: '终端日志保存目录', exact: true }).filter({ hasText: logDirectory }).waitFor();
   await page.getByRole('heading', { name: '终端日志自动保存', exact: true }).scrollIntoViewIfNeeded();
   await page.screenshot({ path: 'test-results/27-auto-log-settings.png' });
+  await page.getByRole('button', { name: '关闭提示', exact: true }).click();
   await page.getByRole('button', { name: '连接管理', exact: true }).click();
   await page.screenshot({ path: 'test-results/25-readable-bubu-devices.png' });
   await page.locator('.profile-card').filter({ has: page.getByRole('heading', { name: longName, exact: true }) }).getByRole('button', { name: '连接', exact: true }).click();
   await page.getByText('已连接', { exact: true }).last().waitFor();
+  const tabsBox = (await page.locator('.terminal-tabs').boundingBox())!;
+  assert.ok(tabsBox.y < 130, JSON.stringify(tabsBox));
+  assert.equal(await page.locator('.view-terminal>.page-heading').count(), 0);
+  assert.ok((await page.locator('.terminal-pane.visible .terminal-split').boundingBox())!.height > 600);
+  await page.screenshot({ path: 'test-results/29-compact-ssh-terminal.png' });
   const token = 'mouse_copy_token'; fixture.sendToTerminals(`\r\n${token}\r\n终端中文显示与剪贴板验证\r\n`);
   const row = page.locator('.terminal-pane.visible .xterm-rows>div').filter({ hasText: token }).first(); await row.waitFor();
   const box = (await row.boundingBox())!; const cell = box.width / fixture.sizes.at(-1)!.cols;
@@ -78,7 +84,22 @@ try {
   assert.equal(await app!.evaluate(({ clipboard }) => clipboard.readText()), 'keep-until-selection-ends');
   await page.mouse.up(); await clipboardIs(token);
   await app!.evaluate(({ clipboard }) => clipboard.writeText('keyboard-copy-test'));
-  await page.keyboard.press('Control+Shift+C'); await clipboardIs(token);
+  const beforeCopyInput = Buffer.concat(fixture.received).toString();
+  const selected = page.locator('.terminal-pane.visible .xterm-selection>div');
+  const selectionColor = await selected.first().evaluate(el => getComputedStyle(el).backgroundColor);
+  assert.match(selectionColor, /^rgba\(/);
+  assert.ok(Number(selectionColor.match(/, ([0-9.]+)\)$/)?.[1]) <= 0.3, selectionColor);
+  const selectedTextStyle = await row.locator('span').filter({ hasText: token }).first().evaluate(el => { const style = getComputedStyle(el); return { foreground: style.color, background: style.backgroundColor }; });
+  const luminance = (value: string) => { const rgb = value.match(/[0-9.]+/g)!.slice(0, 3).map(Number).map(value => { const s = value / 255; return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; }); return .2126 * rgb[0] + .7152 * rgb[1] + .0722 * rgb[2]; };
+  const fg = luminance(selectedTextStyle.foreground), bg = luminance(selectedTextStyle.background);
+  assert.ok(bg > .5 && (Math.max(fg, bg) + .05) / (Math.min(fg, bg) + .05) >= 4.5, JSON.stringify(selectedTextStyle));
+  await page.screenshot({ path: 'test-results/30-readable-terminal-selection.png' });
+  await page.keyboard.press('Control+C'); await clipboardIs(token);
+  await until(async () => await selected.count() === 0, 'classic copy clears selection');
+  assert.equal(Buffer.concat(fixture.received).toString(), beforeCopyInput);
+  await page.mouse.dblclick(box.x + cell * 4, box.y + box.height / 2); await clipboardIs(token);
+  await page.keyboard.press('Control+Shift+C');
+  await until(async () => await selected.count() === 0, 'legacy copy clears selection');
   await page.mouse.click(box.x + cell * 3, box.y + box.height / 2);
   await app!.evaluate(({ clipboard }) => clipboard.writeText('single-click-must-keep'));
   await page.mouse.click(box.x + cell * 3, box.y + box.height / 2);
@@ -97,8 +118,11 @@ try {
   await page.mouse.click(box.x + cell * 4, box.y + box.height / 2, { button: 'right' });
   const expected = '\x1b[200~echo 第一行\recho 第二行\r\x1b[201~';
   await until(() => Buffer.concat(fixture.received).toString().slice(beforePaste.length) === expected, 'single bracketed right-click paste');
+  await until(async () => await selected.count() === 0, 'right-click paste clears old selection');
+  await page.keyboard.press('Control+V');
+  await until(() => Buffer.concat(fixture.received).toString().slice(beforePaste.length) === expected + expected, 'classic Ctrl+V bracketed paste');
   await page.keyboard.press('Control+Shift+V');
-  await until(() => Buffer.concat(fixture.received).toString().slice(beforePaste.length) === expected + expected, 'keyboard bracketed paste');
+  await until(() => Buffer.concat(fixture.received).toString().slice(beforePaste.length) === expected.repeat(3), 'legacy keyboard bracketed paste');
   await page.keyboard.press('Control+C');
   await until(() => Buffer.concat(fixture.received).toString().endsWith('\x03'), 'Ctrl+C interrupt');
   await app!.evaluate(({ clipboard }) => { (globalThis as any).__clipboardReadForTest = clipboard.readText; clipboard.readText = () => new Promise<string>(() => {}); });
@@ -121,6 +145,8 @@ try {
   await page.locator('.terminal-pane.visible .xterm-screen').click({ button: 'right', position: { x: 80, y: 30 } });
   await until(() => Buffer.concat(second.received).toString() === 'only_second_session_中文', 'paste into active second session');
   assert.equal(Buffer.concat(fixture.received).toString(), firstInput);
+  await page.keyboard.press('r');
+  await until(() => Buffer.concat(second.received).toString().endsWith('中文r'), 'connected R remains ordinary input');
   const sessionId = await page.evaluate(async () => (await window.harbor!.initial()).runtime.sessions.find(s => s.name === '第二台会话_中文粘贴验证')!.id);
   second.endTerminals();
   await page.getByText('会话已结束', { exact: true }).waitFor();
@@ -129,8 +155,13 @@ try {
   await page.keyboard.press('Control+Shift+V');
   assert.equal(Buffer.concat(second.received).toString(), disconnected);
   await until(async () => (await fs.readdir(logDirectory)).some(name => name.startsWith(p2.name + '_') && !name.endsWith('.recording.log')), 'remote disconnect log finalization');
+  await page.keyboard.press('r');
+  await poll(page, async oldId => { const sessions = (await window.harbor!.initial()).runtime.sessions; return sessions.length === 2 && !sessions.some(session => session.id === oldId) && sessions.every(session => session.status === 'connected'); }, sessionId);
+  assert.equal(Buffer.concat(second.received).toString(), disconnected);
+  await page.getByText('已连接', { exact: true }).last().waitFor();
+  await page.screenshot({ path: 'test-results/34-r-reconnected.png' });
   await app!.close(); app = undefined;
-  const finalLogs = await fs.readdir(logDirectory); assert.equal(finalLogs.filter(name => name.endsWith('.log')).length, 2); assert.ok(finalLogs.every(name => !name.endsWith('.recording.log')));
+  const finalLogs = await fs.readdir(logDirectory); assert.equal(finalLogs.filter(name => name.endsWith('.log')).length, 3); assert.ok(finalLogs.every(name => !name.endsWith('.recording.log')));
   page = await launch();
   await page.getByRole('heading', { name: '欢迎回来', exact: true }).waitFor();
   assert.equal(await page.locator('html').evaluate(el => getComputedStyle(el).fontSize), '16px');
@@ -141,7 +172,7 @@ try {
   assert.equal(await page.getByRole('combobox', { name: '终端字号', exact: true }).inputValue(), '16');
   assert.equal(await page.getByRole('status', { name: '终端日志保存目录', exact: true }).innerText(), logDirectory);
   assert.deepEqual(errors, []);
-  console.log('Clipboard/readability UI passed: real mouse drag/double-click copy, empty selection preservation, native right-click + keyboard paste, Unicode/newline bracketed paste without duplicate input, Ctrl+C, remote mouse mode, tab isolation, disconnected session, full device names in grid/list at 1040px/18px, independent font preferences, chosen log directory, live output logs, remote disconnect/quit finalization and restart persistence.');
+  console.log('Clipboard/readability UI passed: real mouse drag/double-click copy, empty selection preservation, classic Ctrl+C/V, native right-click + legacy keyboard paste, readable translucent selection and cleanup, compact terminal, Unicode/newline bracketed paste without duplicate input, Ctrl+C, remote mouse mode, tab isolation, disconnected-session R reconnect and connected R input, full device names in grid/list at 1040px/18px, independent font preferences, chosen log directory, live output logs, remote disconnect/quit finalization and restart persistence.');
 } catch (error) {
   console.error('Renderer errors:', errors);
   if (app) { const page = await app.firstWindow(); await page.screenshot({ path: 'test-results/clipboard-failure.png' }); console.error((await page.locator('body').innerText()).slice(0, 2500)); }

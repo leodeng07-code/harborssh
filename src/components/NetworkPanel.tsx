@@ -3,6 +3,8 @@ import { Cable, Pencil, RefreshCw, Save, Search, Settings2 } from 'lucide-react'
 import type { Config, InterfaceChange, InterfaceSnapshot, MacLookup, NetworkInterface, ParameterDefinition, PortParameter, Profile, SnmpTarget } from '../../shared/types';
 import { api, errorText } from '../api';
 import { Modal } from './Modal';
+import { NetworkTargetPicker } from './NetworkTargetPicker';
+import { LldpPanel } from './LldpPanel';
 
 const parameterNames: Record<PortParameter, string> = { pvid: 'PVID', vlanMode: 'VLAN 模式', speed: '速率配置', duplex: '双工配置' };
 const adminNames: Record<number, string> = { 1: '启用', 2: '停用', 3: '测试中' };
@@ -10,14 +12,18 @@ const operNames: Record<number, string> = { 1: 'UP', 2: 'DOWN', 3: '测试中', 
 const duplexNames: Record<number, string> = { 1: '未知', 2: '半双工', 3: '全双工' };
 const valueLabel = (def: ParameterDefinition | undefined, value: string | number | undefined) => value === undefined ? '—' : def?.choices.find(c => c.value === value)?.label || String(value);
 
-export function NetworkPanel({ config, onConfig, notify }: { config: Config; onConfig: (config: Config) => void; notify: (text: string, error?: boolean) => void }) {
-  const [selected, setSelected] = useState(config.profiles[0]?.id || '');
+export function NetworkPanel({ config, onConfig, notify, query, onQueryChange }: { config: Config; onConfig: (config: Config) => void; notify: (text: string, error?: boolean) => void; query: string; onQueryChange: (value: string) => void }) {
+  const [selected, setSelected] = useState(() => {
+    const saved = localStorage.getItem('harbor-network-target');
+    return config.profiles.find(profile => profile.id === saved)?.id || config.profiles.find(profile => config.snmp?.some(target => target.profileId === profile.id && target.hasReadCommunity))?.id || config.profiles[0]?.id || '';
+  });
   const profile = config.profiles.find(p => p.id === selected) || config.profiles[0];
-  return <div className="network-page"><div className="network-toolbar"><Cable size={18} /><label>目标设备<select aria-label="网络管理目标设备" value={profile?.id || ''} onChange={e => setSelected(e.target.value)}>{config.profiles.map(p => <option key={p.id} value={p.id}>{p.name} · {p.host}</option>)}</select></label><span>SNMP v2c · UDP</span></div>
+  return <div className="network-page"><div className="network-toolbar"><NetworkTargetPicker profiles={config.profiles} targets={config.snmp || []} selected={profile} query={query} onQueryChange={onQueryChange} onSelect={id => { setSelected(id); localStorage.setItem('harbor-network-target', id); }} /></div>
     {profile ? <DeviceNetwork key={profile.id} profile={profile} target={config.snmp?.find(t => t.profileId === profile.id)} onConfig={onConfig} notify={notify} /> : <div className="results-empty"><Cable size={32} /><h3>先添加或导入设备连接</h3><p>SNMP 使用连接中的主机地址，Community 单独配置。</p></div>}
   </div>;
 }
 function DeviceNetwork({ profile, target, onConfig, notify }: { profile: Profile; target?: SnmpTarget; onConfig: (config: Config) => void; notify: (text: string, error?: boolean) => void }) {
+  const [tab, setTab] = useState<'interfaces' | 'lldp' | 'mac'>('interfaces');
   const [configure, setConfigure] = useState(false), [adapting, setAdapting] = useState(false);
   const [snapshot, setSnapshot] = useState<InterfaceSnapshot>(), [lookup, setLookup] = useState<MacLookup>();
   const [busy, setBusy] = useState(''), [error, setError] = useState(''), [mac, setMac] = useState(''), [search, setSearch] = useState('');
@@ -26,9 +32,10 @@ function DeviceNetwork({ profile, target, onConfig, notify }: { profile: Profile
   const definitions = target?.parameters || [];
   const configured = target?.hasReadCommunity;
   const rows = snapshot?.interfaces.filter(row => `${row.name} ${row.description} ${row.alias} ${row.mac} ${row.index}`.toLowerCase().includes(search.toLowerCase())) || [];
-  return <>
-    <section className="network-card"><div className="network-card-heading"><div><h3>设备接口</h3><p>{configured ? `查询凭据已加密保存 · UDP ${target.port}${target.hasWriteCommunity ? ' · 已配置读写凭据' : ' · 当前只读'}` : '配置此设备的 Community 后读取接口，无需先建立 SSH 会话。'}</p></div><button className="button" disabled={!!busy} onClick={() => setConfigure(true)}><Settings2 size={14} />SNMP 配置</button><button className="button" disabled={!!busy || !configured} onClick={() => setAdapting(true)}>MIB 适配</button><button className="button primary" disabled={!!busy || !configured} onClick={load}><RefreshCw size={14} />{busy === 'interfaces' ? '正在读取…' : '读取接口'}</button></div>
-      {error && <p className="error-text network-error" role="alert">{error}</p>}
+  return <div className="network-device-panels">
+    <div className="network-view-toolbar"><div className="network-view-tabs" role="tablist" aria-label="网络查询类型" onKeyDown={event => { if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return; event.preventDefault(); const tabs = ['interfaces', 'lldp', 'mac'] as const; const index = (tabs.indexOf(tab) + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length; setTab(tabs[index]); event.currentTarget.querySelectorAll<HTMLButtonElement>('[role=tab]')[index].focus(); }}>{([['interfaces', '设备接口'], ['lldp', 'LLDP 邻居'], ['mac', 'MAC 查端口']] as const).map(([value, label]) => <button key={value} role="tab" aria-selected={tab === value} tabIndex={tab === value ? 0 : -1} onClick={() => setTab(value)}>{label}</button>)}</div><div className="network-settings-actions"><button className="button small" disabled={!!busy} onClick={() => setConfigure(true)}><Settings2 size={14} />SNMP 配置</button><button className="button small" disabled={!!busy || !configured} onClick={() => setAdapting(true)}>MIB 适配</button></div></div>
+    {error && <p className="error-text network-error" role="alert">{error}</p>}
+    <section className="network-card" role="tabpanel" aria-label="设备接口" hidden={tab !== 'interfaces'}><div className="network-card-heading"><div><h3>设备接口</h3><p>{configured ? `查询凭据已加密保存 · UDP ${target.port}${target.hasWriteCommunity ? ' · 已配置读写凭据' : ' · 当前只读'}` : '配置此设备的 Community 后读取接口，无需先建立 SSH 会话。'}</p></div><button className="button primary" disabled={!!busy || !configured} onClick={load}><RefreshCw size={14} />{busy === 'interfaces' ? '正在读取…' : '读取接口'}</button></div>
       {snapshot && <><div className="device-identity"><strong>{snapshot.name || profile.name}</strong><code>{snapshot.host}</code><span>{new Date(snapshot.readAt).toLocaleTimeString()} 读取</span><p>{snapshot.description}</p><small>设备识别 OID：{snapshot.objectId || '未提供'}</small></div>
         <div className="interface-tools"><label><Search size={14} /><input aria-label="筛选接口" placeholder="搜索接口、描述或 MAC" value={search} onChange={e => setSearch(e.target.value)} /></label><span>{rows.length} / {snapshot.interfaces.length} 个接口</span></div>
         <div className="interfaces-scroll"><table className="interface-table"><thead><tr><th>接口 / ifIndex</th><th>管理 / 链路</th><th>速率 / 双工</th><th>描述</th><th>PVID / VLAN 模式</th><th>MAC 地址</th><th>操作</th></tr></thead><tbody>{rows.map(row => <tr key={row.index}><td><strong>{row.name}</strong><small>ifIndex {row.index}{row.bridgePort !== undefined ? ` · 桥端口 ${row.bridgePort}` : ''}</small></td><td><span>{adminNames[row.adminStatus!] || '未知'}</span><span className={`link-badge ${row.operStatus === 1 ? 'up' : ''}`}>{operNames[row.operStatus!] || '未知'}</span></td><td>{row.speedMbps === undefined ? '—' : row.speedMbps >= 1000 ? `${row.speedMbps / 1000} Gbps` : `${row.speedMbps} Mbps`}<small>{duplexNames[row.duplexStatus!] || '未返回双工状态'}</small></td><td className="interface-alias">{row.alias || '—'}</td><td>{valueLabel(definitions.find(d => d.field === 'pvid'), row.parameters.pvid)}<small>{row.parameters.vlanMode === undefined ? 'VLAN 模式待适配' : valueLabel(definitions.find(d => d.field === 'vlanMode'), row.parameters.vlanMode)}</small></td><td className="mono">{row.mac || '—'}</td><td><button className="text-button" disabled={!!busy || !target?.hasWriteCommunity} title={target?.hasWriteCommunity ? '修改此接口参数' : '请先配置读写 Community'} onClick={() => setEditing(row)}><Pencil size={13} />修改</button></td></tr>)}</tbody></table></div>
@@ -37,14 +44,15 @@ function DeviceNetwork({ profile, target, onConfig, notify }: { profile: Profile
       {!snapshot && <div className="network-placeholder"><Cable size={28} /><p>接口状态、速率、双工、描述及 VLAN 信息会显示在这里。</p></div>}
       <p className="field-hint network-footnote">PVID 是端口默认 VLAN，不等同于 Trunk 放行列表。速率、双工和 VLAN 模式的修改需要此型号的可写 MIB 适配。</p>
     </section>
-    <section className="network-card"><div className="network-card-heading"><div><h3>MAC 查端口</h3><p>在当前设备的 Q-BRIDGE / BRIDGE 转发表中查找 MAC 的学习端口。</p></div></div><form className="mac-search" onSubmit={async e => { e.preventDefault(); setLookup(undefined); setError(''); setBusy('mac'); try { setLookup(await api.snmpMac(profile.id, mac)); } catch (e) { setError(errorText(e)); } finally { setBusy(''); } }}><input aria-label="查询 MAC 地址" value={mac} onChange={e => setMac(e.target.value)} placeholder="AA:BB:CC:DD:EE:FF 或 aabb.ccdd.eeff" maxLength={64} /><button className="button primary" disabled={!!busy || !configured || !mac.trim()}><Search size={14} />{busy === 'mac' ? '正在查询…' : '查询当前设备'}</button></form>
+    <div className="network-lldp-region" role="tabpanel" aria-label="LLDP 邻居" hidden={tab !== 'lldp'}><LldpPanel profile={profile} configured={!!configured} /></div>
+    <section className="network-card" role="tabpanel" aria-label="MAC 查端口" hidden={tab !== 'mac'}><div className="network-card-heading"><div><h3>MAC 查端口</h3><p>在当前设备的 Q-BRIDGE / BRIDGE 转发表中查找 MAC 的学习端口。</p></div></div><form className="mac-search" onSubmit={async e => { e.preventDefault(); setLookup(undefined); setError(''); setBusy('mac'); try { setLookup(await api.snmpMac(profile.id, mac)); } catch (e) { setError(errorText(e)); } finally { setBusy(''); } }}><input aria-label="查询 MAC 地址" value={mac} onChange={e => setMac(e.target.value)} placeholder="AA:BB:CC:DD:EE:FF 或 aabb.ccdd.eeff" maxLength={64} /><button className="button primary" disabled={!!busy || !configured || !mac.trim()}><Search size={14} />{busy === 'mac' ? '正在查询…' : '查询当前设备'}</button></form>
       {lookup && <div className="mac-results"><p><strong>{lookup.mac}</strong> · {lookup.host} · {new Date(lookup.readAt).toLocaleTimeString()}</p>{lookup.matches.length ? <table className="interface-table"><thead><tr><th>学习端口</th><th>接口索引</th><th>VLAN</th><th>FDB / 数据表</th></tr></thead><tbody>{lookup.matches.map((m, i) => <tr key={i}><td><strong>{m.interfaceName}</strong><small>桥端口 {m.bridgePort}</small></td><td>{m.ifIndex ?? '未映射'}</td><td>{m.vlans.join(', ') || '未确定'}</td><td>{m.fdbId === undefined ? '—' : m.fdbId}<small>{m.source} · {{1: '其他', 3: '动态学习', 4: '本机', 5: '静态管理'}[m.entryStatus || 0] || '状态未返回'}</small></td></tr>)}</tbody></table> : <p className="network-empty">当前可读取的表中未命中。设备可能尚未学习、条目已老化，或对应 VLAN 表未开放。</p>}<Warnings warnings={lookup.warnings} /></div>}
       <p className="field-hint network-footnote">结果表示此设备学习到 MAC 的入口，可能是上联或聚合端口；需到下级设备继续定位最终接入口。FDB ID 与 VLAN ID 单独显示。</p>
     </section>
     {configure && <SnmpConfig profile={profile} target={target} onClose={() => setConfigure(false)} onSaved={config => { onConfig(config); setSnapshot(undefined); setLookup(undefined); }} notify={notify} />}
     {adapting && <AdapterForm profile={profile} target={target!} onClose={() => setAdapting(false)} onSaved={config => { onConfig(config); setSnapshot(undefined); setLookup(undefined); }} notify={notify} />}
     {editing && <InterfaceEditor profile={profile} row={editing} target={target!} onClose={() => setEditing(undefined)} onChanged={() => { setEditing(undefined); setSnapshot(undefined); void load(); }} notify={notify} />}
-  </>;
+  </div>;
 }
 function Warnings({ warnings }: { warnings: string[] }) { return warnings.length ? <details className="network-warnings"><summary>{warnings.length} 项数据未完整获取</summary>{warnings.map((w, i) => <p key={i}>{w}</p>)}</details> : null; }
 function SnmpConfig({ profile, target, onClose, onSaved, notify }: { profile: Profile; target?: SnmpTarget; onClose: () => void; onSaved: (c: Config) => void; notify: (s: string, error?: boolean) => void }) {

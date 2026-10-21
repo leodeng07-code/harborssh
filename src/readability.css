@@ -96,10 +96,89 @@
 .transfer-list { flex:1;min-height:0 }
 .sftp-directory-foot { flex-wrap:wrap;gap:4px 10px }
 .sftp-error { flex:0 1 auto;min-height:0;max-height:70px;overflow:auto }
-@media(max-height:800px) {
-  .view-terminal>.page-heading { padding:14px 20px;gap:12px }
-  .view-terminal .page-heading .eyebrow,.view-terminal .page-heading p { display:none }
-  .view-terminal .page-heading h1 { font-size:1.4rem }
-  .view-terminal .heading-actions { padding-top:0 }
-  .view-terminal .terminal-workspace { margin-bottom:10px }
+.visually-hidden { position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0 }
+.view-terminal .terminal-workspace { margin:10px 16px 12px }
+.view-network>.page-heading { padding:16px 24px 12px }
+.view-network .page-heading .eyebrow,.view-network .page-heading p { display:none }
+.view-network .page-heading h1 { font-size:1.4rem }
+.network-target-picker { position:relative;flex:1;min-width:0;max-width:100% }
+.network-target-field { position:relative }
+.network-target-label { display:block;margin-bottom:8px;font-size:.9231rem;color:var(--muted) }
+.network-target-search { display:flex;align-items:center;gap:10px;min-height:44px;border:1px solid var(--border);border-radius:7px;padding:3px 10px;background:var(--surface);color:var(--muted) }
+.network-target-search.opened,.network-target-search:focus-within { border-color:var(--accent-border);box-shadow:0 0 0 2px var(--accent-soft) }
+.network-target-search>svg { flex-shrink:0 }
+.network-target-search input { flex:1;min-width:0;width:100%;border:0;background:none;outline:none;padding:8px 0;font-size:.95rem;box-shadow:none }
+.network-target-search input:focus-visible { outline:none }
+.network-target-search .icon-button { width:28px;height:28px }
+.network-target-popover { position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:30;border:1px solid var(--accent-border);border-radius:8px;background:var(--surface);box-shadow:0 14px 40px #0003;overflow:hidden }
+.network-target-filters { display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 14px;border-bottom:1px solid var(--border);color:var(--muted);font-size:.87rem;flex-wrap:wrap }
+.network-target-filters .checkbox-label { font-size:.87rem!important }
+.network-target-results { list-style:none;margin:0;padding:4px;max-height:min(340px,43dvh);overflow:auto;overscroll-behavior:contain }
+.network-target-results li { border-radius:5px }
+.network-target-results li.active { background:var(--accent-soft) }
+.network-target-results li[aria-selected=true] { box-shadow:inset 3px 0 0 var(--accent) }
+.network-target-results li>button { display:flex;align-items:center;width:100%;gap:12px;text-align:left;padding:12px 13px;min-width:0;line-height:1.6 }
+.network-target-results li>button>svg { flex-shrink:0;color:var(--accent) }
+.network-target-option { flex:1;min-width:0 }
+.network-target-option>strong,.network-current-target strong { display:block;color:var(--text);font-size:.95rem;font-weight:600;overflow-wrap:anywhere }
+.network-target-option>span,.network-current-target>div>span { display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:4px;font-size:.87rem;color:var(--muted);overflow-wrap:anywhere }
+.network-target-badge { flex-shrink:0;color:var(--muted);font-size:.8rem;border:1px solid var(--border);background:var(--inset);border-radius:4px;padding:3px 6px;white-space:nowrap }
+.network-target-badge.configured { color:var(--accent);border-color:var(--accent-border);background:var(--accent-soft) }
+.network-target-hint { padding:9px 14px;border-top:1px solid var(--border);font-size:.8rem;line-height:1.7;color:var(--muted);background:var(--inset) }
+.network-target-empty { padding:24px 14px;line-height:1.8;text-align:center;color:var(--muted) }
+.network-current-target { display:flex;align-items:center;gap:12px;padding:14px 0 0;line-height:1.6 }
+.network-current-target>svg { color:var(--accent);flex-shrink:0 }
+.network-current-target>div { flex:1;min-width:0 }
+.network-current-target small { display:block;font-size:.8rem;color:var(--muted);margin-bottom:3px }
+.network-protocol { flex-shrink:0;padding-top:35px;font-size:.87rem }
+/* xterm's DOM renderer otherwise blends selection against a transparent
+   terminal background; use an explicit translucent overlay for the wallpaper. */
+[data-theme=bubu-yier] .xterm .xterm-selection div { background-color:rgba(181,119,76,.28)!important }
+[data-theme=bubu-yier] .xterm:not(.focus) .xterm-selection div { background-color:rgba(181,119,76,.16)!important }
+@media(max-width:1250px) {
+  .view-terminal .topbar .privacy-label { display:none }
+  .network-protocol { display:none }
+  .network-target-results li>button { gap:8px;padding:10px }
+}
+
+/* Network workspace: one selected target and one data view fill the window. */
+.network-page-body { display:flex;flex-direction:column;padding-top:10px;padding-bottom:12px;overflow:hidden }
+.network-page { flex:1;min-height:0;gap:10px }
+.network-toolbar { flex-shrink:0 }
+.network-target-picker { display:grid;grid-template-columns:minmax(240px,1fr) minmax(240px,1fr);gap:14px;align-items:center }
+.network-target-label { position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap }
+.network-current-target { padding-top:0 }
+.network-current-target small { display:none }
+.network-device-panels { display:flex;flex-direction:column;flex:1;min-height:0;gap:10px }
+.network-view-toolbar { display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;flex-shrink:0 }
+.network-view-tabs { display:flex;gap:4px;padding:3px;border:1px solid var(--border);border-radius:7px;background:var(--inset) }
+.network-view-tabs button { padding:8px 13px;border-radius:4px;color:var(--muted);font-size:.95rem;white-space:nowrap }
+.network-view-tabs button[aria-selected=true] { background:var(--accent-soft);color:var(--accent);font-weight:600 }
+.network-settings-actions { display:flex;gap:8px;flex-wrap:wrap }
+.network-device-panels>.network-card,.network-lldp-region,.lldp-card { display:flex;flex-direction:column;flex:1;min-height:0 }
+.network-device-panels [hidden] { display:none!important }
+.network-card-heading { padding:12px 14px;flex-shrink:0 }
+.network-card-heading h3 { margin-bottom:4px }
+.network-placeholder { min-height:80px;flex:1 }
+.network-footnote { padding:8px 14px;flex-shrink:0 }
+.network-warnings { flex-shrink:0;max-height:110px;overflow:auto }
+.network-device-panels>.network-error { flex-shrink:0;margin:0 }
+.device-identity { padding:10px 14px;flex-shrink:0 }
+.device-identity p { margin:4px 0;max-height:55px;overflow:auto }
+.interface-tools { flex-shrink:0;padding:10px 14px }
+.interfaces-scroll { flex:1;min-height:80px;max-height:none;overflow:auto }
+.mac-results { flex:1;min-height:0 }
+.mac-search { flex-shrink:0;padding-bottom:12px }
+.lldp-table { min-width:960px }
+.lldp-table td { vertical-align:top;max-width:270px;overflow-wrap:anywhere }
+.lldp-table td strong { white-space:normal;overflow-wrap:anywhere;min-width:110px }
+.lldp-table td:nth-child(2) { min-width:190px }
+.lldp-table td:nth-child(3) { min-width:180px }
+.lldp-table td:nth-child(4) { min-width:190px }
+.lldp-table td code { display:block;font-size:.9rem;white-space:nowrap;overflow-wrap:normal;margin-bottom:5px }
+@media(max-width:1250px) {
+  .network-target-picker { gap:10px;grid-template-columns:minmax(220px,1fr) minmax(220px,1fr) }
+  .network-current-target { gap:8px }
+  .network-current-target>.network-target-badge { display:none }
+  .network-view-tabs button { padding-inline:10px }
 }

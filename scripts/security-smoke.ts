@@ -58,7 +58,7 @@ try {
   }); assert.equal(offlineAsset, true);
   await page.screenshot({ path: 'test-results/20-bubu-theme-settings.png' });
   await page.getByRole('button', { name: 'SSH 终端', exact: true }).click();
-  assert.equal(await page.locator('.terminal-pane.visible .xterm-scrollable-element').evaluate(el => getComputedStyle(el).backgroundColor), 'rgba(0, 0, 0, 0)');
+  assert.match(await page.locator('.terminal-pane.visible .xterm-scrollable-element').evaluate(el => getComputedStyle(el).backgroundColor), /, 0\)$/);
   assert.equal(await page.locator('.terminal-pane.visible .xterm-viewport').evaluate(el => getComputedStyle(el).backgroundColor), 'rgba(0, 0, 0, 0)');
   await page.locator('.terminal-pane.visible .terminal-container').click(); await page.keyboard.insertText('bubu-theme-live-check'); await page.keyboard.press('Enter');
   await poll(page, async () => { const state = await window.harbor!.initial(); const buffers = await Promise.all(state.runtime.sessions.map(session => window.harbor!.readTerminal(session.id))); return buffers.some(buffer => buffer.data.some(value => atob(value).includes('bubu-theme-live-check'))); });

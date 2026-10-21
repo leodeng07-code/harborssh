@@ -35,6 +35,7 @@ const api: DesktopAPI = {
   snmpInterfaces: id => ipcRenderer.invoke('harbor:snmp-interfaces', id),
   snmpChange: input => ipcRenderer.invoke('harbor:snmp-change', input),
   snmpMac: (id, mac) => ipcRenderer.invoke('harbor:snmp-mac', id, mac),
+  snmpLldp: id => ipcRenderer.invoke('harbor:snmp-lldp', id),
   pickKey: () => ipcRenderer.invoke('harbor:pick-key'),
   importPreview: () => ipcRenderer.invoke('harbor:import-preview'),
   importCommit: (token, rows, remember, fillMissing) => ipcRenderer.invoke('harbor:import-commit', token, rows, remember, fillMissing),

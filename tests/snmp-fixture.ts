@@ -7,7 +7,7 @@ export const testMappings: ParameterDefinition[] = [
   { field: 'duplex', oid: '1.3.6.1.4.1.8072.9999.1.2', index: 'ifIndex', type: 'Integer', choices: [{ label: '自动', value: 0 }, { label: '全双工', value: 1 }] },
   { field: 'vlanMode', oid: '1.3.6.1.4.1.8072.9999.1.3', index: 'ifIndex', type: 'Integer', choices: [{ label: 'Access', value: 1 }, { label: 'Trunk', value: 2 }] },
 ];
-export async function snmpFixture() {
+export async function snmpFixture(options: { lldp?: 'neighbors' | 'empty' | 'unavailable' } = {}) {
   const socket = dgram.createSocket('udp4'); await new Promise<void>(r => socket.bind(0, '127.0.0.1', r));
   const port = socket.address().port; await new Promise<void>(r => socket.close(r));
   const agent = snmp.createAgent({ port, address: '127.0.0.1', accessControlModelType: snmp.AccessControlModelType.Simple }, () => {});
@@ -33,5 +33,24 @@ export async function snmpFixture() {
   table('vlanMap', '1.3.6.1.2.1.17.7.1.4.2.1', [{ number: 3, name: 'vlanFdb', type: snmp.ObjectType.Gauge }, { number: 100, name: 'timeMark', type: I }, { number: 101, name: 'vlanId', type: I }], ['timeMark', 'vlanId'], [[77, 0, 20]]);
   const bCols = Array.from({ length: 6 }, (_, i) => ({ number: 100 + i, name: `bIndex${i}`, type: I }));
   table('classicFdb', '1.3.6.1.2.1.17.4.3.1', [{ number: 2, name: 'classicPort', type: I }, { number: 3, name: 'classicStatus', type: I }, ...bCols], bCols.map(c => c.name), [[7, 3, 0, 17, 34, 51, 68, 85]]);
+  if (options.lldp !== 'unavailable') {
+    scalar('lldpLocalSubtype', '1.0.8802.1.1.2.1.3.1', I, 4); scalar('lldpLocalName', '1.0.8802.1.1.2.1.3.3', S, '本地 LLDP 交换机');
+    table('lldpLocalPorts', '1.0.8802.1.1.2.1.3.7.1', [{ number: 2, name: 'lldpPortType', type: I }, { number: 3, name: 'lldpPortId', type: S }, { number: 4, name: 'lldpPortDesc', type: S }, { number: 100, name: 'lldpPortNumber', type: I }], ['lldpPortNumber'], [[5, 'GE0/0/7', '核心上联', 7], [7, 'local-port-8', '测试端口', 8]]);
+    const remIndices = [{ number: 100, name: 'remTime', type: I }, { number: 101, name: 'remLocalPort', type: I }, { number: 102, name: 'remIndex', type: I }];
+    table('lldpRemote', '1.0.8802.1.1.2.1.4.1.1', [
+      { number: 4, name: 'remChassisType', type: I }, { number: 5, name: 'remChassis', type: S }, { number: 6, name: 'remPortType', type: I }, { number: 7, name: 'remPort', type: S }, { number: 8, name: 'remPortDesc', type: S }, { number: 9, name: 'remName', type: S }, { number: 10, name: 'remDescription', type: S }, { number: 11, name: 'remSupported', type: S }, { number: 12, name: 'remEnabled', type: S }, ...remIndices,
+    ], remIndices.map(column => column.name), options.lldp === 'empty' ? [] : [
+      [4, Buffer.from('aabbccddeeff', 'hex'), 5, 'Ten-GigabitEthernet1/0/48', '上联核心端口', 'CORE-SW-01', '核心交换机 LLDP 测试邻居', Buffer.from([0x28, 0]), Buffer.from([0x28, 0]), 12345, 7, 1],
+      [5, Buffer.from([1, 192, 0, 2, 25]), 3, Buffer.from('001122334466', 'hex'), '无线 AP 上联', 'AP-01', '无线接入点', Buffer.from([0x14, 0]), Buffer.from([0x10, 0]), 12346, 7, 2],
+      [7, 'remote-chassis-8', 7, 'remote-port-8', '', '', '', Buffer.from([0, 0]), Buffer.from([0, 0]), 23456, 8, 1],
+    ]);
+    const manIndices = [{ number: 100, name: 'manTime', type: I }, { number: 101, name: 'manLocal', type: I }, { number: 102, name: 'manRemote', type: I }, { number: 103, name: 'manFamily', type: I }, { number: 104, name: 'manAddress', type: S }];
+    table('lldpManagement', '1.0.8802.1.1.2.1.4.2.1', [{ number: 3, name: 'manIfSubtype', type: I }, { number: 4, name: 'manIfId', type: I }, ...manIndices], manIndices.map(column => column.name), options.lldp === 'empty' ? [] : [
+      [2, 101, 12345, 7, 1, 1, Buffer.from([192, 0, 2, 10])],
+      [2, 101, 12345, 7, 1, 2, Buffer.from('20010db8000000000000000000000010', 'hex')],
+      [2, 101, 12346, 7, 2, 1, Buffer.from([192, 0, 2, 25])],
+      [2, 101, 99999, 7, 1, 1, Buffer.from([192, 0, 2, 99])],
+    ]);
+  }
   return { port, writes, mib, close: () => new Promise<void>(resolve => agent.close(resolve)) };
 }

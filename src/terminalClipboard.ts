@@ -18,11 +18,19 @@ export function bindTerminalClipboard(terminal: Terminal, element: HTMLElement, 
     clipboardOperation = pending.catch(() => {});
     void pending.catch(error => { if (!disposed) options.onError(error); });
   };
-  const copySelection = () => {
+  const copySelection = (clearAfter = true) => {
     const text = terminal.getSelection();
+    const position = terminal.getSelectionPosition();
     // A plain click or an empty selection must never erase the clipboard.
     if (!text) return;
-    enqueue(async () => { await options.copy(text); if (!disposed) options.onCopied(); });
+    enqueue(async () => {
+      await options.copy(text);
+      if (!disposed) {
+        // Do not clear a newer selection made while the native copy was pending.
+        if (clearAfter && !selecting && JSON.stringify(terminal.getSelectionPosition()) === JSON.stringify(position)) terminal.clearSelection();
+        options.onCopied();
+      }
+    });
   };
   const paste = () => {
     if (!options.connected() || !options.active()) return;
@@ -32,7 +40,7 @@ export function bindTerminalClipboard(terminal: Terminal, element: HTMLElement, 
       const text = await options.paste();
       if (!disposed && options.connected() && options.active() && text) {
         // xterm normalizes line endings and honors the remote bracketed-paste mode.
-        terminal.paste(text);
+        terminal.clearSelection(); terminal.paste(text);
       }
     });
   };
@@ -44,7 +52,7 @@ export function bindTerminalClipboard(terminal: Terminal, element: HTMLElement, 
     if (event.button !== 0 || !selecting) return;
     selecting = false;
     // Window bubbling runs after xterm's document mouseup selection handling.
-    copySelection();
+    copySelection(false);
   };
   const rightRelease = (event: MouseEvent) => {
     if (event.button === 2) { event.preventDefault(); event.stopPropagation(); }

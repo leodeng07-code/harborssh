@@ -1,9 +1,10 @@
 import snmp, { type Session, type Varbind } from 'net-snmp';
 import { isIP } from 'node:net';
 import type { EventEmitter } from 'node:events';
-import type { InterfaceSnapshot, InterfaceChange, InterfaceChangeResult, MacLookup, MacMatch, NetworkInterface, ParameterDefinition } from '../shared/types';
+import type { InterfaceSnapshot, InterfaceChange, InterfaceChangeResult, LldpSnapshot, MacLookup, MacMatch, NetworkInterface, ParameterDefinition } from '../shared/types';
 import { Store } from './store';
 import { interfaceChangeSchema } from './validation';
+import { LLDP_OIDS, parseLldp } from './lldp';
 
 export const OIDS = {
   sysName: '1.3.6.1.2.1.1.5.0', sysDescr: '1.3.6.1.2.1.1.1.0', objectId: '1.3.6.1.2.1.1.2.0',
@@ -185,6 +186,19 @@ export class SnmpService {
         matches.push({ bridgePort, ifIndex, interfaceName, fdbId, vlans, source, entryStatus });
       }
       return { profileId: id, host: this.store.profile(id).host, mac, matches, warnings, readAt: Date.now() };
+    });
+  }
+  async lldp(id: string): Promise<LldpSnapshot> {
+    return this.use(id, false, async reader => {
+      const warnings: string[] = [];
+      const optional = async (oid: string, label: string) => { try { return await reader.walk(oid); } catch { warnings.push(`${label} 读取失败，结果可能不完整`); return []; } };
+      const [remote, local, management, identity] = await Promise.all([
+        reader.walk(LLDP_OIDS.remote), optional(LLDP_OIDS.localPorts, 'LLDP 本地端口'), optional(LLDP_OIDS.management, 'LLDP 管理地址'),
+        reader.get([LLDP_OIDS.localChassisSubtype, LLDP_OIDS.localName]).catch(() => { warnings.push('LLDP 本机标识读取失败'); return []; }),
+      ]);
+      const neighbors = parseLldp(remote, local, management, warnings);
+      if (neighbors.length && !local.length) warnings.push('未取得 LLDP 本地端口标识，仅显示 LLDP 端口编号；此编号不等同于 ifIndex');
+      return { profileId: id, host: this.store.profile(id).host, localName: text(identity.find(value => value.oid === LLDP_OIDS.localName)), available: !!(identity.length || remote.length || local.length), neighbors, warnings, readAt: Date.now() };
     });
   }
   dispose() { for (const reader of this.active) reader.close(); this.active.clear(); }
