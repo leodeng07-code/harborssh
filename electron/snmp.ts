@@ -5,6 +5,8 @@ import type { InterfaceSnapshot, InterfaceChange, InterfaceChangeResult, LldpSna
 import { Store } from './store';
 import { interfaceChangeSchema } from './validation';
 import { LLDP_OIDS, parseLldp } from './lldp';
+import { readIpQuery } from './network-reader';
+import type { NetworkQueryData, NetworkQueryKind } from '../shared/types';
 
 export const OIDS = {
   sysName: '1.3.6.1.2.1.1.5.0', sysDescr: '1.3.6.1.2.1.1.1.0', objectId: '1.3.6.1.2.1.1.2.0',
@@ -21,7 +23,7 @@ const macText = (v?: Varbind) => Buffer.isBuffer(v?.value) ? [...v.value].map(n 
 export const defaultPvid: ParameterDefinition = { field: 'pvid', oid: OIDS.pvid, index: 'bridgePort', type: 'Unsigned32', choices: [] };
 export function normalizeMac(value: string) {
   const input = value.trim();
-  if (!/^(?:[\da-f]{12}|[\da-f]{2}(?::[\da-f]{2}){5}|[\da-f]{2}(?:-[\da-f]{2}){5}|[\da-f]{4}(?:\.[\da-f]{4}){2})$/i.test(input)) throw new Error('请输入有效的 MAC 地址，例如 AA:BB:CC:DD:EE:FF');
+  if (!/^(?:[\da-f]{12}|[\da-f]{2}(?::[\da-f]{2}){5}|[\da-f]{2}(?:-[\da-f]{2}){5}|[\da-f]{4}(?:\.[\da-f]{4}){2}|[\da-f]{4}(?:-[\da-f]{4}){2})$/i.test(input)) throw new Error('请输入有效的 MAC 地址，例如 AA:BB:CC:DD:EE:FF、aabb.ccdd.eeff 或 aabb-ccdd-eeff');
   return input.replace(/[:.\-]/g, '').toUpperCase().match(/../g)!.join(':');
 }
 // All requests are bounded, all sockets are closed, and transport errors never
@@ -68,23 +70,29 @@ export class SnmpService {
   private active = new Set<Reader>();
   private opening = 0;
   private writing = new Set<string>();
+  private disposed = false;
   constructor(private store: Store) {}
   private definitions(id: string) {
     const custom = this.store.config().snmp?.find(t => t.profileId === id)?.parameters || [];
     return [defaultPvid, ...custom].filter((d, i, all) => !all.slice(i + 1).some(v => v.field === d.field));
   }
-  private async use<T>(id: string, write: boolean, action: (reader: Reader) => Promise<T>) {
+  private async use<T>(id: string, write: boolean, action: (reader: Reader) => Promise<T>, signal?: AbortSignal) {
+    signal?.throwIfAborted();
+    if (this.disposed) throw new Error('SNMP 服务已关闭');
     if (this.opening + this.active.size >= 8) throw new Error('SNMP 查询较多，请稍后再试');
     this.opening++;
     let reader: Reader;
     try {
     const p = this.store.profile(id), target = this.store.config().snmp?.find(t => t.profileId === id);
     const secrets = await this.store.snmpSecrets(id), community = write ? secrets.writeCommunity : secrets.readCommunity;
+    signal?.throwIfAborted();
+    if (this.disposed) throw new Error('SNMP 服务已关闭');
     if (!target || !community) throw new Error(write ? '请先单独配置读写 Community' : '请先配置 SNMP v2c 只读 Community');
     reader = new Reader(snmp.createSession(p.host, community, { port: target.port, version: snmp.Version2c, transport: isIP(p.host) === 6 ? 'udp6' : 'udp4', timeout: 1800, retries: write ? 0 : 1, backoff: 1 }));
     this.active.add(reader);
     } finally { this.opening--; }
-    try { return await action(reader); } finally { reader.close(); this.active.delete(reader); }
+    const cancel = () => reader.close(); signal?.addEventListener('abort', cancel, { once: true });
+    try { signal?.throwIfAborted(); return await action(reader); } finally { signal?.removeEventListener('abort', cancel); reader.close(); this.active.delete(reader); }
   }
   private async column(reader: Reader, oid: string, label: string, warnings: string[], required = false) {
     try { const rows = await reader.walk(oid); if (!rows.length && !required) warnings.push(`${label} 未返回数据，可能不支持或无访问权限`); return rows; }
@@ -157,16 +165,19 @@ export class SnmpService {
       } catch { return { verified: false, message: 'SET 已应答，但回读失败，请刷新核对，避免直接重复操作' }; }
     }); } finally { this.writing.delete(key); }
   }
-  async mac(id: string, input: string): Promise<MacLookup> {
+  async mac(id: string, input: string, signal?: AbortSignal): Promise<MacLookup> {
     const mac = normalizeMac(input), suffix = mac.split(':').map(v => parseInt(v, 16)).join('.');
     return this.use(id, false, async reader => {
       const warnings: string[] = [], matches: MacMatch[] = [];
+      await reader.get([OIDS.sysName]);
       const qRows = await this.column(reader, OIDS.qFdbPort, 'Q-BRIDGE MAC 表', warnings);
       const classic = await this.column(reader, OIDS.fdbPort, 'BRIDGE MAC 表', warnings);
+      signal?.throwIfAborted();
       const relevantQ = qRows.filter(v => v.oid.endsWith('.' + suffix) && number(v)! > 0);
       const relevantClassic = classic.filter(v => v.oid.slice(OIDS.fdbPort.length + 1) === suffix && number(v)! > 0);
       const vlanRows = relevantQ.length ? await this.column(reader, OIDS.vlanFdb, 'VLAN 与 FDB 对应表', warnings) : [];
       for (const [rows, root, source] of [[relevantQ, OIDS.qFdbPort, 'Q-BRIDGE'], [relevantClassic, OIDS.fdbPort, 'BRIDGE']] as const) for (const v of rows) {
+        signal?.throwIfAborted();
         const bridgePort = number(v)!, index = v.oid.slice(root.length + 1).split('.').map(Number);
         if (index.length !== (source === 'Q-BRIDGE' ? 7 : 6)) continue;
         let entryStatus: number | undefined;
@@ -185,8 +196,25 @@ export class SnmpService {
         } catch { warnings.push(`桥端口 ${bridgePort} 的接口映射读取失败`); }
         matches.push({ bridgePort, ifIndex, interfaceName, fdbId, vlans, source, entryStatus });
       }
-      return { profileId: id, host: this.store.profile(id).host, mac, matches, warnings, readAt: Date.now() };
-    });
+      return { profileId: id, host: this.store.profile(id).host, mac, matches, warnings, readAt: Date.now(), available: !!(qRows.length || classic.length) };
+    }, signal);
+  }
+  async query(id: string, kind: NetworkQueryKind, query: string, signal?: AbortSignal): Promise<NetworkQueryData> {
+    const isMac = query.includes(':');
+    if (kind !== 'mac' && !(kind === 'auto' && isMac)) return this.use(id, false, reader => readIpQuery(reader, kind, query, signal), signal);
+    const fdb = async (): Promise<NetworkQueryData> => {
+      const result = await this.mac(id, query, signal);
+      return { available: !!result.available, readAt: result.readAt, warnings: result.warnings,
+        rows: result.matches.map((row, index) => ({ key: `mac:${index}`, kind: 'mac', source: row.source, mac: result.mac, interfaceName: row.interfaceName, ifIndex: row.ifIndex, vlans: row.vlans, description: `桥端口 ${row.bridgePort}${row.fdbId === undefined ? '' : ` · FDB ${row.fdbId}`}` })) };
+    };
+    if (kind === 'mac') return fdb();
+    const parts = await Promise.allSettled([this.use(id, false, reader => readIpQuery(reader, 'arp', query, signal), signal), fdb()]);
+    signal?.throwIfAborted();
+    if (parts.every(part => part.status === 'rejected')) throw (parts[0] as PromiseRejectedResult).reason;
+    const data: NetworkQueryData = { rows: [], warnings: [], available: false, readAt: Date.now() };
+    for (const [index, part] of parts.entries()) if (part.status === 'fulfilled') { data.rows.push(...part.value.rows); data.warnings.push(...part.value.warnings); data.available ||= part.value.available; }
+    else data.warnings.push(`${index ? 'MAC 转发表' : 'ARP 表'}查询失败，其他命中已保留`);
+    return data;
   }
   async lldp(id: string): Promise<LldpSnapshot> {
     return this.use(id, false, async reader => {
@@ -201,5 +229,5 @@ export class SnmpService {
       return { profileId: id, host: this.store.profile(id).host, localName: text(identity.find(value => value.oid === LLDP_OIDS.localName)), available: !!(identity.length || remote.length || local.length), neighbors, warnings, readAt: Date.now() };
     });
   }
-  dispose() { for (const reader of this.active) reader.close(); this.active.clear(); }
+  dispose() { this.disposed = true; for (const reader of this.active) reader.close(); this.active.clear(); }
 }

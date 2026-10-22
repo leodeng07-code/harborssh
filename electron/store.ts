@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import type { Config, Profile, ProfileInput, Secrets, Tunnel, SnmpConfigInput, SnmpTarget } from '../shared/types';
-import { profileSchema, tunnelSchema, snmpConfigSchema, snmpTargetSchema } from './validation';
+import type { Config, Profile, ProfileInput, Secrets, Tunnel, SnmpConfigInput, SnmpTarget, BatchSnmpConfigInput } from '../shared/types';
+import { profileSchema, tunnelSchema, snmpConfigSchema, snmpTargetSchema, batchSnmpConfigSchema } from './validation';
 
 export interface Cipher { available(): boolean; encrypt(value: string): Promise<string>; decrypt(value: string): Promise<string> }
 interface DiskState { version: 1; profiles: Profile[]; tunnels: Tunnel[]; credentials: Record<string, string>; knownHosts: Record<string, string>; snmpTargets?: SnmpTarget[]; snmpCredentials?: Record<string, string>; terminalLogDirectory?: string }
@@ -55,20 +55,30 @@ export class Store {
   }
   async saveSnmp(raw: SnmpConfigInput) {
     const input = snmpConfigSchema.parse(raw);
+    await this.mutate(next => this.applySnmp(next, input)); return this.config();
+  }
+  async saveSnmpBatch(raw: BatchSnmpConfigInput) {
+    const input = batchSnmpConfigSchema.parse(raw);
     await this.mutate(async next => {
-      if (!next.profiles.some(p => p.id === input.profileId)) throw new Error('连接不存在');
-      const current = next.snmpCredentials?.[input.profileId];
-      const secrets = current ? JSON.parse(await this.cipher.decrypt(current)) : {};
-      if (input.readCommunity !== undefined) secrets.readCommunity = input.readCommunity;
-      if (input.clearWrite) delete secrets.writeCommunity;
-      else if (input.writeCommunity !== undefined) secrets.writeCommunity = input.writeCommunity;
-      if (!secrets.readCommunity) throw new Error('请填写只读 Community');
-      next.snmpCredentials ||= {};
-      next.snmpCredentials[input.profileId] = await this.cipher.encrypt(JSON.stringify(secrets));
-      const previous = next.snmpTargets?.find(t => t.profileId === input.profileId);
-      const target = { profileId: input.profileId, port: input.port, hasReadCommunity: true, hasWriteCommunity: !!secrets.writeCommunity, parameters: input.parameters ?? previous?.parameters ?? [] };
-      next.snmpTargets = [...(next.snmpTargets || []).filter(t => t.profileId !== input.profileId), target];
+      for (const profileId of input.profileIds) {
+        const port = input.port ?? next.snmpTargets?.find(t => t.profileId === profileId)?.port ?? 161;
+        await this.applySnmp(next, { profileId, port, readCommunity: input.readCommunity, writeCommunity: input.writeCommunity, clearWrite: input.clearWrite });
+      }
     }); return this.config();
+  }
+  private async applySnmp(next: DiskState, input: SnmpConfigInput) {
+    if (!next.profiles.some(p => p.id === input.profileId)) throw new Error('连接不存在');
+    const current = next.snmpCredentials?.[input.profileId];
+    const secrets = current ? JSON.parse(await this.cipher.decrypt(current)) : {};
+    if (input.readCommunity !== undefined) secrets.readCommunity = input.readCommunity;
+    if (input.clearWrite) delete secrets.writeCommunity;
+    else if (input.writeCommunity !== undefined) secrets.writeCommunity = input.writeCommunity;
+    if (!secrets.readCommunity) throw new Error('请填写只读 Community');
+    next.snmpCredentials ||= {};
+    next.snmpCredentials[input.profileId] = await this.cipher.encrypt(JSON.stringify(secrets));
+    const previous = next.snmpTargets?.find(t => t.profileId === input.profileId);
+    const target = { profileId: input.profileId, port: input.port, hasReadCommunity: true, hasWriteCommunity: !!secrets.writeCommunity, parameters: input.parameters ?? previous?.parameters ?? [] };
+    next.snmpTargets = [...(next.snmpTargets || []).filter(t => t.profileId !== input.profileId), target];
   }
   private mutate(fn: (next: DiskState) => Promise<void> | void) {
     const operation = this.queue.then(async () => {

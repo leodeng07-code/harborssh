@@ -9,6 +9,7 @@ import { Manager } from './manager';
 import { parseImport, exportProfiles, importSelection, type ImportDraft } from './importer';
 import { batchSchema, idSchema, message, profileInputSchema, tunnelSchema, snmpConfigSchema, interfaceChangeSchema } from './validation';
 import { SnmpService } from './snmp';
+import { NetworkQueryService } from './network-query';
 import type { AppEvent, Profile } from '../shared/types';
 
 let win: BrowserWindow;
@@ -16,6 +17,7 @@ let store: Store;
 let vault: Vault;
 let manager: Manager;
 let snmp: SnmpService;
+let networkQueries: NetworkQueryService;
 let exiting = false;
 let confirmingClose = false;
 const drafts = new Map<string, ImportDraft>();
@@ -121,9 +123,17 @@ function registerIPC() {
   handle('harbor:batch-run', request => manager.runBatch(batchSchema.parse(request)));
   handle('harbor:batch-cancel', id => manager.cancelBatch(idSchema.parse(id)));
   handle('harbor:snmp-configure', input => store.saveSnmp(snmpConfigSchema.parse(input)));
+  handle('harbor:snmp-configure-batch', input => store.saveSnmpBatch(input));
   handle('harbor:snmp-interfaces', id => snmp.interfaces(idSchema.parse(id)));
   handle('harbor:snmp-mac', (id, mac) => snmp.mac(idSchema.parse(id), z.string().max(64).parse(mac)));
   handle('harbor:snmp-lldp', id => snmp.lldp(idSchema.parse(id)));
+  handle('harbor:network-query', request => {
+    if (!win.isVisible() || win.isMinimized()) throw new Error('软件窗口不可见，网络查询已暂停');
+    return networkQueries.start(request);
+  });
+  handle('harbor:network-query-read', id => networkQueries.read(idSchema.parse(id)));
+  handle('harbor:network-query-cancel', id => networkQueries.cancel(idSchema.parse(id)));
+  handle('harbor:window-visible', () => win.isVisible() && !win.isMinimized());
   handle('harbor:snmp-change', async raw => {
     const input = interfaceChangeSchema.parse(raw), p = store.profile(input.profileId);
     const display = (value: number | string) => input.field === 'adminStatus' ? value === 1 ? '启用' : value === 2 ? '停用' : String(value) : String(value) || '（空）';
@@ -182,6 +192,9 @@ async function createWindow() {
     webPreferences: { preload: path.join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true, spellcheck: false },
   });
   Menu.setApplicationMenu(null);
+  const visibility = (visible: boolean) => { if (!visible) networkQueries.pause(); emit({ type: 'windowVisibility', visible }); };
+  win.on('hide', () => visibility(false)); win.on('minimize', () => visibility(false));
+  win.on('show', () => visibility(!win.isMinimized())); win.on('restore', () => visibility(win.isVisible()));
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', event => event.preventDefault());
   win.webContents.session.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
@@ -209,7 +222,7 @@ else {
   void app.whenReady().then(async () => {
     vault = new Vault(app.getPath('userData'), async value => (await safeStorage.decryptStringAsync(Buffer.from(value, 'base64'))).result);
     await vault.load(); store = new Store(app.getPath('userData'), vault);
-    await store.load(); manager = new Manager(store, emit, verifyHost); snmp = new SnmpService(store); registerIPC(); await createWindow();
+    await store.load(); manager = new Manager(store, emit, verifyHost); snmp = new SnmpService(store); networkQueries = new NetworkQueryService(store, snmp); registerIPC(); await createWindow();
   }).catch(error => { dialog.showErrorBox('Harbor SSH 启动失败', message(error)); app.exit(1); });
   app.on('window-all-closed', () => { manager?.dispose(); app.quit(); });
   app.on('before-quit', event => {
@@ -217,5 +230,5 @@ else {
     event.preventDefault(); manager.dispose();
     void manager.flushLogs().then(() => { exiting = true; app.quit(); });
   });
-  app.on('will-quit', () => { manager?.dispose(); snmp?.dispose(); vault?.lock(); });
+  app.on('will-quit', () => { manager?.dispose(); networkQueries?.dispose(); snmp?.dispose(); vault?.lock(); });
 }

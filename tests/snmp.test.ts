@@ -11,7 +11,7 @@ import { profile, tempStore } from './helpers';
 import { snmpFixture, testMappings } from './snmp-fixture';
 
 test('MAC inputs and unsafe mappings are validated', () => {
-  for (const input of ['aabbccddeeff', 'aa:bb:cc:dd:ee:ff', 'aa-bb-cc-dd-ee-ff', 'aabb.ccdd.eeff']) assert.equal(normalizeMac(input), 'AA:BB:CC:DD:EE:FF');
+  for (const input of ['aabbccddeeff', 'aa:bb:cc:dd:ee:ff', 'aa-bb-cc-dd-ee-ff', 'aabb.ccdd.eeff', 'aabb-ccdd-eeff']) assert.equal(normalizeMac(input), 'AA:BB:CC:DD:EE:FF');
   for (const input of ['AA:BB:CC', 'aa-bb:cc-dd-ee-ff', 'prefixaabbccddeeff', 'GG:BB:CC:DD:EE:FF']) assert.throws(() => normalizeMac(input));
   const p = profile(22);
   assert.equal(interfaceChangeSchema.safeParse({ profileId: p.id, index: 1, field: 'adminStatus', value: 7, expected: 1 }).success, false);

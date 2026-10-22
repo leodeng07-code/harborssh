@@ -22,16 +22,34 @@ export type PortParameter = 'pvid' | 'vlanMode' | 'speed' | 'duplex';
 export interface ParameterDefinition { field: PortParameter; oid: string; index: 'ifIndex' | 'bridgePort'; type: 'Integer' | 'Unsigned32' | 'OctetString' | 'OID'; choices: { label: string; value: string | number }[] }
 export interface SnmpTarget { profileId: string; port: number; hasReadCommunity: boolean; hasWriteCommunity: boolean; parameters?: ParameterDefinition[] }
 export interface SnmpConfigInput { profileId: string; port: number; readCommunity?: string; writeCommunity?: string; clearWrite?: boolean; parameters?: ParameterDefinition[] }
+export interface BatchSnmpConfigInput { profileIds: string[]; port?: number; readCommunity: string; writeCommunity?: string; clearWrite?: boolean }
 export interface NetworkInterface { index: number; name: string; description: string; alias: string; adminStatus?: number; operStatus?: number; speedMbps?: number; mac: string; bridgePort?: number; duplexStatus?: number; parameters: Partial<Record<PortParameter, string | number>> }
 export interface InterfaceSnapshot { profileId: string; host: string; name: string; objectId: string; description: string; interfaces: NetworkInterface[]; warnings: string[]; readAt: number }
 export interface InterfaceChange { profileId: string; index: number; field: 'adminStatus' | 'alias' | PortParameter; value: number | string; expected: number | string }
 export interface InterfaceChangeResult { verified: boolean; message: string }
 export interface MacMatch { bridgePort: number; ifIndex?: number; interfaceName: string; fdbId?: number; vlans: number[]; source: 'Q-BRIDGE' | 'BRIDGE'; entryStatus?: number }
-export interface MacLookup { profileId: string; host: string; mac: string; matches: MacMatch[]; warnings: string[]; readAt: number }
+export interface MacLookup { profileId: string; host: string; mac: string; matches: MacMatch[]; warnings: string[]; readAt: number; available?: boolean }
 export interface LldpNeighbor { key: string; timeMark: number; localPortNumber: number; remoteIndex: number; localPortId: string; localPortDescription: string; chassisId: string; portId: string; portDescription: string; systemName: string; systemDescription: string; managementAddresses: string[]; supportedCapabilities: string[]; enabledCapabilities: string[] }
 export interface LldpSnapshot { profileId: string; host: string; localName: string; available: boolean; neighbors: LldpNeighbor[]; warnings: string[]; readAt: number }
+export type NetworkQueryKind = 'auto' | 'arp' | 'routes' | 'ipInterfaces' | 'mac';
+export interface NetworkQueryRequest { profileIds: string[]; kind: NetworkQueryKind; query: string }
+export interface NetworkQueryRow {
+  key: string; kind: 'arp' | 'routes' | 'ipInterfaces' | 'mac'; source: string;
+  ifIndex?: number; interfaceName: string; ip?: string; prefixLength?: number; mask?: string; mac?: string;
+  nextHop?: string; protocol?: string; metric?: number; type?: string; state?: string;
+  adminStatus?: number; operStatus?: number; description?: string; policy?: string; vlans?: number[];
+}
+export interface NetworkQueryData { rows: NetworkQueryRow[]; warnings: string[]; available: boolean; readAt: number }
+export interface NetworkQueryDevice {
+  profileId: string; name: string; host: string; group: string;
+  status: 'queued' | 'running' | 'done' | 'error' | 'cancelled'; data?: NetworkQueryData; error?: string;
+}
+export interface NetworkQueryJob {
+  id: string; kind: NetworkQueryKind; query: string; status: 'running' | 'done' | 'cancelled';
+  startedAt: number; finishedAt?: number; devices: NetworkQueryDevice[];
+}
 export interface InitialState { config: Config; runtime: RuntimeSnapshot; version: string; secureStorage: boolean; platform: string }
-export type AppEvent = { type: 'runtime'; data: RuntimeSnapshot } | { type: 'terminal'; id: string; seq: number; data: string } | { type: 'transfers'; sessionId: string; data: FileTransfer[] } | { type: 'notice'; message: string; error?: boolean };
+export type AppEvent = { type: 'runtime'; data: RuntimeSnapshot } | { type: 'terminal'; id: string; seq: number; data: string } | { type: 'transfers'; sessionId: string; data: FileTransfer[] } | { type: 'notice'; message: string; error?: boolean } | { type: 'windowVisibility'; visible: boolean };
 export interface RemoteFile { name: string; path: string; type: 'directory' | 'file' | 'link' | 'other'; size: number; modified: number; mode: number }
 export interface RemoteDirectory { path: string; entries: RemoteFile[] }
 export interface FileTransfer { id: string; sessionId: string; name: string; direction: 'upload' | 'download'; status: 'queued' | 'preparing' | 'running' | 'success' | 'error' | 'cancelled'; bytes: number; total: number; files: number; completed: number; destination: string; message?: string }
@@ -75,10 +93,15 @@ export interface DesktopAPI {
   runBatch(request: BatchRequest): Promise<string>;
   cancelBatch(id: string): Promise<void>;
   snmpConfigure(input: SnmpConfigInput): Promise<Config>;
+  snmpConfigureBatch(input: BatchSnmpConfigInput): Promise<Config>;
   snmpInterfaces(profileId: string): Promise<InterfaceSnapshot>;
   snmpChange(input: InterfaceChange): Promise<InterfaceChangeResult>;
   snmpMac(profileId: string, mac: string): Promise<MacLookup>;
   snmpLldp(profileId: string): Promise<LldpSnapshot>;
+  networkQuery(request: NetworkQueryRequest): Promise<string>;
+  networkQueryRead(id: string): Promise<NetworkQueryJob>;
+  networkQueryCancel(id: string): Promise<void>;
+  windowVisible(): Promise<boolean>;
   pickKey(): Promise<string | null>;
   importPreview(): Promise<ImportPreview | null>;
   importCommit(token: string, rows: number[], remember: boolean, fillMissing?: boolean): Promise<Config>;

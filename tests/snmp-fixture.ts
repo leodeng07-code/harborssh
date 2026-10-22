@@ -7,7 +7,7 @@ export const testMappings: ParameterDefinition[] = [
   { field: 'duplex', oid: '1.3.6.1.4.1.8072.9999.1.2', index: 'ifIndex', type: 'Integer', choices: [{ label: '自动', value: 0 }, { label: '全双工', value: 1 }] },
   { field: 'vlanMode', oid: '1.3.6.1.4.1.8072.9999.1.3', index: 'ifIndex', type: 'Integer', choices: [{ label: 'Access', value: 1 }, { label: 'Trunk', value: 2 }] },
 ];
-export async function snmpFixture(options: { lldp?: 'neighbors' | 'empty' | 'unavailable' } = {}) {
+export async function snmpFixture(options: { lldp?: 'neighbors' | 'empty' | 'unavailable'; ipTables?: 'legacy' | 'cidr' | 'modern' | 'empty' | 'unavailable' } = {}) {
   const socket = dgram.createSocket('udp4'); await new Promise<void>(r => socket.bind(0, '127.0.0.1', r));
   const port = socket.address().port; await new Promise<void>(r => socket.close(r));
   const agent = snmp.createAgent({ port, address: '127.0.0.1', accessControlModelType: snmp.AccessControlModelType.Simple }, () => {});
@@ -33,6 +33,52 @@ export async function snmpFixture(options: { lldp?: 'neighbors' | 'empty' | 'una
   table('vlanMap', '1.3.6.1.2.1.17.7.1.4.2.1', [{ number: 3, name: 'vlanFdb', type: snmp.ObjectType.Gauge }, { number: 100, name: 'timeMark', type: I }, { number: 101, name: 'vlanId', type: I }], ['timeMark', 'vlanId'], [[77, 0, 20]]);
   const bCols = Array.from({ length: 6 }, (_, i) => ({ number: 100 + i, name: `bIndex${i}`, type: I }));
   table('classicFdb', '1.3.6.1.2.1.17.4.3.1', [{ number: 2, name: 'classicPort', type: I }, { number: 3, name: 'classicStatus', type: I }, ...bCols], bCols.map(c => c.name), [[7, 3, 0, 17, 34, 51, 68, 85]]);
+  scalar('uptime', '1.3.6.1.2.1.1.3', snmp.ObjectType.TimeTicks, 123456);
+  const ipMode = options.ipTables || 'cidr';
+  const ipTable = (name: string, oid: string, columns: { number: number; name: string; type: number }[], indexLength: number, rows: unknown[][]) => {
+    const indices = Array.from({ length: indexLength }, (_, i) => ({ number: 100 + i, name: `${name}Index${i}`, type: I }));
+    table(name, oid, [...columns, ...indices], indices.map(column => column.name), rows);
+  };
+  const A = snmp.ObjectType.IpAddress;
+  if (ipMode !== 'unavailable') {
+    ipTable('arpTable', '1.3.6.1.2.1.4.22.1', [{ number: 2, name: 'arpMac', type: S }, { number: 3, name: 'arpIp', type: A }, { number: 4, name: 'arpType', type: I }], 5, ipMode === 'empty' || ipMode === 'modern' ? [] : [
+      [Buffer.from('aabbccddeeff', 'hex'), '192.0.2.99', 3, 101, 192, 0, 2, 99],
+      [Buffer.from('001122334455', 'hex'), '192.0.2.88', 4, 101, 192, 0, 2, 88],
+      [Buffer.from('112233445566', 'hex'), '192.0.2.77', 2, 101, 192, 0, 2, 77],
+    ]);
+    ipTable('addressTable', '1.3.6.1.2.1.4.20.1', [{ number: 1, name: 'addrIp', type: A }, { number: 2, name: 'addrIf', type: I }, { number: 3, name: 'addrMask', type: A }], 4, ipMode === 'empty' || ipMode === 'modern' ? [] : [
+      ['192.0.2.1', 101, '255.255.255.0', 192, 0, 2, 1], ['192.0.2.2', 101, '255.255.255.0', 192, 0, 2, 2],
+    ]);
+  }
+  if (ipMode === 'modern') {
+    ipTable('neighborTable', '1.3.6.1.2.1.4.35.1', [{ number: 4, name: 'neighborMac', type: S }, { number: 6, name: 'neighborType', type: I }, { number: 7, name: 'neighborState', type: I }, { number: 8, name: 'neighborStatus', type: I }], 7, [
+      [Buffer.from('aabbccddeeff', 'hex'), 3, 1, 1, 101, 1, 4, 192, 0, 2, 99],
+      [Buffer.from('112233445566', 'hex'), 2, 1, 1, 101, 1, 4, 192, 0, 2, 77],
+    ]);
+    ipTable('modernAddressTable', '1.3.6.1.2.1.4.34.1', [{ number: 3, name: 'modernAddrIf', type: I }, { number: 5, name: 'modernAddrPrefix', type: snmp.ObjectType.OID }, { number: 10, name: 'modernAddrStatus', type: I }], 6, [
+      [101, '1.3.6.1.2.1.4.32.1.5.101.1.4.192.0.2.0.24', 1, 1, 4, 192, 0, 2, 1],
+    ]);
+    // Variable policy OID lengths and a zero-length direct-route next-hop.
+    const inetColumns = [{ number: 7, name: 'inetIf', type: I }, { number: 8, name: 'inetType', type: I }, { number: 9, name: 'inetProto', type: I }, { number: 12, name: 'inetMetric', type: I }, { number: 17, name: 'inetStatus', type: I }];
+    // One table provider requires fixed synthetic index width. Different lengths are covered by parser tests.
+    ipTable('inetRouteTable', '1.3.6.1.2.1.4.24.7.1', inetColumns, 16, [
+      [101, 4, 13, 10, 1, 1, 4, 192, 0, 2, 0, 24, 2, 0, 0, 1, 4, 192, 0, 2, 254],
+      [101, 4, 13, 10, 1, 1, 4, 192, 0, 2, 0, 24, 2, 0, 0, 1, 4, 192, 0, 2, 253],
+      [101, 2, 3, -1, 1, 1, 4, 192, 0, 2, 200, 32, 2, 0, 0, 1, 4, 0, 0, 0, 0],
+    ]);
+  }
+  if (ipMode === 'cidr') ipTable('cidrRouteTable', '1.3.6.1.2.1.4.24.4.1', [{ number: 5, name: 'cidrIf', type: I }, { number: 6, name: 'cidrType', type: I }, { number: 7, name: 'cidrProto', type: I }, { number: 11, name: 'cidrMetric', type: I }, { number: 16, name: 'cidrStatus', type: I }], 13, [
+    [101, 4, 3, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 192, 0, 2, 254],
+    [101, 4, 13, 20, 1, 192, 0, 0, 0, 255, 255, 0, 0, 0, 192, 0, 2, 254],
+    [101, 4, 13, 10, 1, 192, 0, 2, 0, 255, 255, 255, 0, 0, 192, 0, 2, 254],
+    [101, 4, 13, 10, 1, 192, 0, 2, 0, 255, 255, 255, 0, 0, 192, 0, 2, 253],
+    [101, 4, 13, 1, 2, 192, 0, 2, 99, 255, 255, 255, 255, 0, 192, 0, 2, 252],
+  ]);
+  if (ipMode === 'legacy') ipTable('legacyRouteTable', '1.3.6.1.2.1.4.21.1', [{ number: 1, name: 'routeDest', type: A }, { number: 2, name: 'routeIf', type: I }, { number: 3, name: 'routeMetric', type: I }, { number: 7, name: 'routeNext', type: A }, { number: 8, name: 'routeType', type: I }, { number: 9, name: 'routeProto', type: I }, { number: 11, name: 'routeMask', type: A }], 4, [
+    ['0.0.0.0', 101, 1, '192.0.2.254', 4, 3, '0.0.0.0', 0, 0, 0, 0],
+    ['192.0.2.0', 101, 10, '0.0.0.0', 3, 2, '255.255.255.0', 192, 0, 2, 0],
+    ['192.0.2.99', 101, 1, '192.0.2.252', 2, 3, '255.255.255.255', 192, 0, 2, 99],
+  ]);
   if (options.lldp !== 'unavailable') {
     scalar('lldpLocalSubtype', '1.0.8802.1.1.2.1.3.1', I, 4); scalar('lldpLocalName', '1.0.8802.1.1.2.1.3.3', S, '本地 LLDP 交换机');
     table('lldpLocalPorts', '1.0.8802.1.1.2.1.3.7.1', [{ number: 2, name: 'lldpPortType', type: I }, { number: 3, name: 'lldpPortId', type: S }, { number: 4, name: 'lldpPortDesc', type: S }, { number: 100, name: 'lldpPortNumber', type: I }], ['lldpPortNumber'], [[5, 'GE0/0/7', '核心上联', 7], [7, 'local-port-8', '测试端口', 8]]);
