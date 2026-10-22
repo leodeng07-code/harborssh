@@ -10,6 +10,7 @@ const filename = `release/HarborSSH-${version}-windows-x64.zip`;
 await fs.access('release/win-unpacked/Harbor SSH.exe');
 await fs.copyFile('README.md', 'release/win-unpacked/使用说明.md');
 await fs.copyFile('assets/SSH导入模板.xlsx', 'release/win-unpacked/SSH导入模板.xlsx');
+await fs.copyFile('assets/Test-HarborSnmp.ps1', 'release/win-unpacked/Test-HarborSnmp.ps1');
 const output = createWriteStream(filename);
 const archive = archiver('zip', { zlib: { level: 1 } });
 archive.on('error', error => output.destroy(error));

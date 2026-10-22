@@ -14,7 +14,7 @@ export function ScopePicker({ profiles, value, onChange, disabled }: { profiles:
 }
 const labels = { auto: '智能查询', arp: 'ARP 查询', routes: '路由查询', ipInterfaces: 'IP 接口概览', mac: 'MAC 查端口' };
 const hint = (kind: NetworkQueryKind) => kind === 'auto' ? '输入完整 IPv4：查询 ARP、接口地址和最佳路由；输入 MAC：查询 ARP 和学习端口。' : kind === 'routes' ? '输入目的 IPv4，按最长前缀匹配最佳路由，保留多下一跳。' : kind === 'ipInterfaces' ? '显示接口 IPv4 / 掩码、管理状态和链路状态；可按 IPv4 地址片段筛选。' : kind === 'arp' ? '按 IPv4 地址或片段筛选 IP、MAC、出接口及动态 / 静态类型。' : '支持 xxxx.xxxx.xxxx、xxxx-xxxx-xxxx、xx:xx:xx:xx:xx:xx、xx-xx-xx-xx-xx-xx。';
-export function NetworkQueryPanel({ config, kind: fixedKind, global = false, onSelect }: { config: Config; kind?: NetworkQueryKind; global?: boolean; onSelect?: (id: string) => void }) {
+export function NetworkQueryPanel({ config, kind: fixedKind, global = false, onSelect, enabled = true }: { config: Config; kind?: NetworkQueryKind; global?: boolean; onSelect?: (id: string) => void; enabled?: boolean }) {
   const [kind, setKind] = useState<NetworkQueryKind>(fixedKind || 'auto');
   const [query, setQuery] = useState(''), [scope, setScope] = useState('');
   const [interval, setIntervalValue] = useState(() => { const saved = Number(localStorage.getItem('harbor-network-refresh') ?? 30); return [0, 30, 60].includes(saved) ? saved : 30; });
@@ -33,6 +33,15 @@ export function NetworkQueryPanel({ config, kind: fixedKind, global = false, onS
   }, [idsKey, kind]);
   useEffect(() => { if (fixedKind) setKind(fixedKind); }, [fixedKind]);
   useEffect(() => {
+    if (enabled) return;
+    cancel(); setBusy(false); setArmed(false);
+    setJob(previous => {
+      if (!previous) return previous;
+      return previous.status === 'running' ? { ...previous, status: 'cancelled', devices: previous.devices.map(device => ['queued', 'running'].includes(device.status) ? { ...device, status: 'cancelled' } : device) } : previous;
+    });
+    if (job) setNotice('已暂停刷新，保留上次结果；点击查询可更新');
+  }, [enabled]);
+  useEffect(() => {
     let mounted = true, nativeVisible = true, revision = 0;
     const change = () => {
       const shown = nativeVisible && !document.hidden; setVisible(shown);
@@ -45,7 +54,7 @@ export function NetworkQueryPanel({ config, kind: fixedKind, global = false, onS
     return () => { mounted = false; unsubscribe(); document.removeEventListener('visibilitychange', change); };
   }, []);
   const run = async () => {
-    if (working.current || !visible || document.hidden) return;
+    if (!enabled || working.current || !visible || document.hidden) return;
     const token = ++generation.current; working.current = true; setBusy(true); setError(''); setNotice(''); setJob(undefined);
     try {
       const id = await api.networkQuery({ profileIds: profiles.map(profile => profile.id), kind, query });
@@ -63,10 +72,10 @@ export function NetworkQueryPanel({ config, kind: fixedKind, global = false, onS
   };
   runRef.current = run;
   useEffect(() => {
-    if (!armed || !interval || busy || !visible) return;
+    if (!enabled || !armed || !interval || busy || !visible) return;
     const timer = window.setTimeout(() => { void runRef.current(); }, interval * 1000);
     return () => window.clearTimeout(timer);
-  }, [armed, interval, busy, visible, job?.finishedAt]);
+  }, [enabled, armed, interval, busy, visible, job?.finishedAt]);
   const completed = job?.devices.filter(device => device.status !== 'queued' && device.status !== 'running').length || 0;
   const hits = job?.devices.filter(device => device.data?.rows.length).length || 0;
   const rows = job?.devices.flatMap(device => (device.data?.rows || []).map(row => ({ device, row }))) || [];
@@ -82,7 +91,7 @@ export function NetworkQueryPanel({ config, kind: fixedKind, global = false, onS
     </form>
     {notice && !job && <p className="network-query-notice" role="status">{notice}</p>}
     {error && <p className="error-text network-query-error" role="alert">{error}</p>}
-    {job ? <><div className="network-query-progress" role="status"><strong>{job.status === 'running' ? '查询中' : job.status === 'cancelled' ? '已停止' : '本轮完成'} · {completed} / {job.devices.length} 台 · {hits} 台命中 · {rows.length} 条</strong><span>{job.query || '全部条目'} · {new Date(job.startedAt).toLocaleTimeString()} 开始{armed && interval > 0 && !busy ? ` · 完成后 ${interval} 秒刷新` : ''}</span><progress max={job.devices.length} value={completed} aria-label="网络查询进度" /></div>
+    {job ? <><div className="network-query-progress" role="status"><strong>{job.status === 'running' ? '查询中' : job.status === 'cancelled' ? '已停止' : '本轮完成'} · {completed} / {job.devices.length} 台 · {hits} 台命中 · {rows.length} 条</strong><span>{job.query || '全部条目'} · {new Date(job.startedAt).toLocaleTimeString()} 开始{notice ? ` · ${notice}` : armed && interval > 0 && !busy ? ` · 完成后 ${interval} 秒刷新` : ''}</span><progress max={job.devices.length} value={completed} aria-label="网络查询进度" /></div>
       <div className="network-query-results"><NetworkQueryResults rows={rows} global={global} onSelect={onSelect} busy={busy} expanded={showTrunks} onToggle={() => setShowTrunks(value => !value)} />
       <details className="network-query-coverage"><summary>设备查询状态 · {issueCount} 台需检查（含表为空或访问受限）</summary><div>{job.devices.map(device => <article key={device.profileId}><strong>{device.name}</strong><code>{device.host}</code><span>{device.status === 'done' ? device.data?.rows.length ? `${device.data.rows.length} 条命中` : device.data?.available ? '可读取的数据中未命中' : '表为空或不可读取' : { queued: '等待中', running: '查询中', error: '查询失败', cancelled: '已取消' }[device.status]}</span>{device.data && <time>{new Date(device.data.readAt).toLocaleTimeString()}</time>}{device.error && <p className="error-text">{device.error}</p>}{device.data?.warnings.map(warning => <p key={warning} className="warning-text">{warning}</p>)}</article>)}</div></details></div>
     </> : <div className="network-placeholder"><Search size={26} /><p>{global ? '只查询连接库中已配置 SNMP 的设备，可按三级分组缩小范围。' : '通过 SNMP 只读查询，无需连接 SSH。'}</p></div>}

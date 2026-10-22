@@ -20,8 +20,9 @@ export interface RuntimeSnapshot { sessions: SessionInfo[]; tunnels: TunnelInfo[
 export interface Config { profiles: Profile[]; tunnels: Tunnel[]; snmp?: SnmpTarget[]; terminalLogDirectory?: string }
 export type PortParameter = 'pvid' | 'vlanMode' | 'speed' | 'duplex';
 export interface ParameterDefinition { field: PortParameter; oid: string; index: 'ifIndex' | 'bridgePort'; type: 'Integer' | 'Unsigned32' | 'OctetString' | 'OID'; choices: { label: string; value: string | number }[] }
-export interface SnmpTarget { profileId: string; port: number; hasReadCommunity: boolean; hasWriteCommunity: boolean; parameters?: ParameterDefinition[] }
-export interface SnmpConfigInput { profileId: string; port: number; readCommunity?: string; writeCommunity?: string; clearWrite?: boolean; parameters?: ParameterDefinition[] }
+export interface SnmpTuning { timeoutMs?: number; retries?: number; maxRepetitions?: number }
+export interface SnmpTarget extends SnmpTuning { profileId: string; port: number; hasReadCommunity: boolean; hasWriteCommunity: boolean; parameters?: ParameterDefinition[] }
+export interface SnmpConfigInput extends SnmpTuning { profileId: string; port: number; readCommunity?: string; writeCommunity?: string; clearWrite?: boolean; parameters?: ParameterDefinition[] }
 export interface BatchSnmpConfigInput { profileIds: string[]; port?: number; readCommunity: string; writeCommunity?: string; clearWrite?: boolean }
 export interface NetworkInterface { index: number; name: string; description: string; alias: string; adminStatus?: number; operStatus?: number; speedMbps?: number; mac: string; bridgePort?: number; duplexStatus?: number; parameters: Partial<Record<PortParameter, string | number>> }
 export interface InterfaceSnapshot { profileId: string; host: string; name: string; objectId: string; description: string; interfaces: NetworkInterface[]; warnings: string[]; readAt: number }
@@ -53,7 +54,7 @@ export interface NetworkQueryJob {
 export interface InitialState { config: Config; runtime: RuntimeSnapshot; version: string; secureStorage: boolean; platform: string }
 export type AppEvent = { type: 'runtime'; data: RuntimeSnapshot } | { type: 'terminal'; id: string; seq: number; data: string } | { type: 'transfers'; sessionId: string; data: FileTransfer[] } | { type: 'notice'; message: string; error?: boolean } | { type: 'windowVisibility'; visible: boolean };
 export interface RemoteFile { name: string; path: string; type: 'directory' | 'file' | 'link' | 'other'; size: number; modified: number; mode: number }
-export interface RemoteDirectory { path: string; entries: RemoteFile[] }
+export interface RemoteDirectory { path: string; entries: RemoteFile[]; transport?: 'shared' | 'separate' }
 export interface FileTransfer { id: string; sessionId: string; name: string; direction: 'upload' | 'download'; status: 'queued' | 'preparing' | 'running' | 'success' | 'error' | 'cancelled'; bytes: number; total: number; files: number; completed: number; destination: string; message?: string }
 export interface TerminalBuffer { seq: number; data: string[] }
 export interface SystemMemory { total: number; used: number; available: number; percent: number; estimated?: boolean }

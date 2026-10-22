@@ -3,18 +3,18 @@ import ssh2 from 'ssh2';
 import { promises as fs, type Stats } from 'node:fs';
 import path from 'node:path';
 
-export interface SftpFixtureOptions { root: string; writeDelay?: number; deny?: string; channels?: { count: number }; singleSession?: boolean }
+export interface SftpFixtureOptions { root: string; writeDelay?: number; deny?: string; channels?: { count: number }; singleSession?: boolean; rejectSubsystemAfterShell?: boolean; stallSubsystemAfterShell?: boolean; volumeRoot?: string; noRealpath?: boolean }
 export function attachSftp(session: Session, options: SftpFixtureOptions) {
   session.on('sftp', accept => {
     options.channels && options.channels.count++; const s = accept();
     const handles = new Map<string, { file?: fs.FileHandle; directory?: string; listed?: boolean }>(); let serial = 0; let closed = false;
     const stats = (v: Stats) => ({ mode: v.mode, uid: v.uid, gid: v.gid, size: v.size, atime: Math.floor(v.atimeMs / 1000), mtime: Math.floor(v.mtimeMs / 1000) });
-    const resolve = (name: string) => { if (options.deny && name.includes(options.deny)) throw Object.assign(new Error('Permission denied'), { code: 'EACCES' }); const relative = path.posix.resolve('/', name === '.' ? '/' : name); return path.join(options.root, relative); };
+    const resolve = (name: string) => { if (options.deny && name.includes(options.deny)) throw Object.assign(new Error('Permission denied'), { code: 'EACCES' }); if (options.volumeRoot && name.startsWith(options.volumeRoot)) name = name.slice(options.volumeRoot.length); const relative = path.posix.resolve('/', name === '.' ? '/' : name); return path.join(options.root, relative); };
     const fail = (id: number, error: unknown) => { if (closed) return; const code = (error as NodeJS.ErrnoException).code; s.status(id, code === 'ENOENT' ? ssh2.utils.sftp.STATUS_CODE.NO_SUCH_FILE : code === 'EACCES' ? ssh2.utils.sftp.STATUS_CODE.PERMISSION_DENIED : ssh2.utils.sftp.STATUS_CODE.FAILURE, (error as Error).message); };
     const wrap = (fn: (id: number, ...args: any[]) => Promise<void>) => (id: number, ...args: any[]) => { void fn(id, ...args).catch(error => fail(id, error)); };
     const handle = (id: number, value: { file?: fs.FileHandle; directory?: string }) => { const b = Buffer.from(String(++serial)); handles.set(b.toString(), value); s.handle(id, b); };
     const get = (b: Buffer) => { const value = handles.get(b.toString()); if (!value) throw new Error('Invalid handle'); return value; };
-    s.on('REALPATH', wrap(async (id, name: string) => { const absolute = await fs.realpath(resolve(name)); const relative = '/' + path.relative(options.root, absolute).split(path.sep).join('/'); s.name(id, [{ filename: relative, longname: relative, attrs: stats(await fs.stat(absolute)) }]); }));
+    s.on('REALPATH', wrap(async (id, name: string) => { if (options.noRealpath) { s.status(id, ssh2.utils.sftp.STATUS_CODE.OP_UNSUPPORTED); return; } const absolute = await fs.realpath(resolve(name)); const relative = (options.volumeRoot || '') + '/' + path.relative(options.root, absolute).split(path.sep).join('/'); s.name(id, [{ filename: relative, longname: relative, attrs: stats(await fs.stat(absolute)) }]); }));
     s.on('STAT', wrap(async (id, name) => s.attrs(id, stats(await fs.stat(resolve(name))))));
     s.on('LSTAT', wrap(async (id, name) => s.attrs(id, stats(await fs.lstat(resolve(name))))));
     s.on('FSTAT', wrap(async (id, b: Buffer) => s.attrs(id, stats(await get(b).file!.stat()))));

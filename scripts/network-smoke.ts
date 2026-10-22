@@ -28,6 +28,7 @@ try {
   const modal = page.getByRole('dialog');
   await modal.getByLabel('UDP 端口', { exact: true }).fill(String(fixture.port));
   await modal.getByLabel('只读 Community', { exact: true }).fill('fixture-read'); await modal.getByLabel('读写 Community（可选）', { exact: true }).fill('fixture-write');
+  await modal.locator('.snmp-compat-settings summary').click(); await modal.getByLabel('SNMP 请求超时', { exact: true }).fill('5000'); await modal.getByLabel('SNMP 每批条数', { exact: true }).fill('5');
   await modal.getByRole('button', { name: '保存配置', exact: true }).click(); await modal.waitFor({ state: 'hidden' });
   const hostSearch = page.getByRole('combobox', { name: '搜索网络管理主机', exact: true });
   const currentTarget = page.getByLabel('当前网络管理目标', { exact: true });
@@ -59,6 +60,7 @@ try {
   await page.getByRole('button', { name: '读取接口', exact: true }).click(); await page.getByRole('tabpanel', { name: '设备接口', exact: true }).getByText('GE0/0/7', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'SNMP 配置', exact: true }).click();
   assert.equal(await modal.getByLabel('只读 Community', { exact: true }).inputValue(), ''); assert.equal(await modal.getByLabel('读写 Community（可选）', { exact: true }).inputValue(), '');
+  await modal.locator('.snmp-compat-settings summary').click(); assert.equal(await modal.getByLabel('SNMP 请求超时', { exact: true }).inputValue(), '5000'); assert.equal(await modal.getByLabel('SNMP 每批条数', { exact: true }).inputValue(), '5');
   await modal.getByRole('button', { name: '取消', exact: true }).click();
   await page.getByRole('button', { name: 'MIB 适配', exact: true }).click();
   for (const mapping of testMappings) {

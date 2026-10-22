@@ -77,7 +77,7 @@ export class Store {
     next.snmpCredentials ||= {};
     next.snmpCredentials[input.profileId] = await this.cipher.encrypt(JSON.stringify(secrets));
     const previous = next.snmpTargets?.find(t => t.profileId === input.profileId);
-    const target = { profileId: input.profileId, port: input.port, hasReadCommunity: true, hasWriteCommunity: !!secrets.writeCommunity, parameters: input.parameters ?? previous?.parameters ?? [] };
+    const target = { profileId: input.profileId, port: input.port, hasReadCommunity: true, hasWriteCommunity: !!secrets.writeCommunity, parameters: input.parameters ?? previous?.parameters ?? [], timeoutMs: input.timeoutMs ?? previous?.timeoutMs ?? 1800, retries: input.retries ?? previous?.retries ?? 1, maxRepetitions: input.maxRepetitions ?? previous?.maxRepetitions ?? 30 };
     next.snmpTargets = [...(next.snmpTargets || []).filter(t => t.profileId !== input.profileId), target];
   }
   private mutate(fn: (next: DiskState) => Promise<void> | void) {

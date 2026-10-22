@@ -40,14 +40,14 @@ try {
   console.log('Uniform community and group/port preservation verified.');
   await page.getByRole('tab', { name: 'ARP 查询', exact: true }).click();
   await page.getByLabel('ARP 查询地址', { exact: true }).fill('192.0.2.99'); await page.getByRole('button', { name: '查询当前设备', exact: true }).click();
-  await poll(async () => (await page.locator('.network-query-progress').innerText()).includes('本轮完成'), 10000);
-  assert.equal(await page.locator('.network-query-table tbody tr').count(), 1); assert.match(await page.locator('.network-query-table').innerText(), /AA:BB:CC:DD:EE:FF/);
+  await poll(async () => (await page.locator('.network-query-panel:visible .network-query-progress').innerText()).includes('本轮完成'), 10000);
+  assert.equal(await page.locator('.network-query-panel:visible .network-query-table tbody tr').count(), 1); assert.match(await page.locator('.network-query-panel:visible .network-query-table').innerText(), /AA:BB:CC:DD:EE:FF/);
   await page.getByRole('tab', { name: '路由查询', exact: true }).click(); await page.getByLabel('路由查询地址', { exact: true }).fill('192.0.2.99'); await page.getByRole('button', { name: '查询当前设备', exact: true }).click();
-  await poll(async () => (await page.locator('.network-query-progress').innerText()).includes('本轮完成'), 10000);
-  assert.equal(await page.locator('.network-query-table tbody tr').count(), 2); assert.match(await page.locator('.network-query-table').innerText(), /192.0.2.0\/24/); assert.match(await page.locator('.network-query-table').innerText(), /OSPF/);
+  await poll(async () => (await page.locator('.network-query-panel:visible .network-query-progress').innerText()).includes('本轮完成'), 10000);
+  assert.equal(await page.locator('.network-query-panel:visible .network-query-table tbody tr').count(), 2); assert.match(await page.locator('.network-query-panel:visible .network-query-table').innerText(), /192.0.2.0\/24/); assert.match(await page.locator('.network-query-panel:visible .network-query-table').innerText(), /OSPF/);
   await page.getByRole('tab', { name: 'IP 接口', exact: true }).click(); await page.getByRole('button', { name: '查询当前设备', exact: true }).click();
-  await poll(async () => (await page.locator('.network-query-progress').innerText()).includes('本轮完成'), 10000);
-  assert.equal(await page.locator('.network-query-table tbody tr').count(), 2); assert.match(await page.locator('.network-query-table').innerText(), /启用 \/ UP/);
+  await poll(async () => (await page.locator('.network-query-panel:visible .network-query-progress').innerText()).includes('本轮完成'), 10000);
+  assert.equal(await page.locator('.network-query-panel:visible .network-query-table tbody tr').count(), 2); assert.match(await page.locator('.network-query-panel:visible .network-query-table').innerText(), /启用 \/ UP/);
   await page.getByRole('button', { name: '全网查询', exact: true }).click();
   const global = page.getByLabel('全网查询', { exact: true });
   assert.equal(await global.getByLabel('网络查询自动刷新', { exact: true }).inputValue(), '30');
@@ -74,6 +74,25 @@ try {
     assert.equal(await global.locator('.network-query-table tbody tr').count(), 4); assert.match(await global.locator('.network-query-table').innerText(), /VLAN 20/);
   }
   console.log('MAC inputs and per-device timeout coverage verified.');
+  await global.getByLabel('网络查询自动刷新', { exact: true }).selectOption('30');
+  await global.getByRole('button', { name: '查询全网', exact: true }).click(); await poll(async () => (await global.locator('.network-query-progress').innerText()).includes('本轮完成'), 12000);
+  const cachedTable = await global.locator('.network-query-table').innerText();
+  const cachedInput = await input.inputValue();
+  const cachedTime = await global.locator('.network-query-progress>span').innerText();
+  await page.getByRole('button', { name: 'SSH 终端', exact: true }).click();
+  assert.equal(await global.isVisible(), false);
+  if (!process.env.HARBOR_QUERY_QUICK) await page.waitForTimeout(31000);
+  await page.getByRole('button', { name: '网络管理', exact: true }).click();
+  assert.equal(await global.getByRole('button', { name: '暂停刷新', exact: true }).count(), 0);
+  assert.equal(await input.inputValue(), cachedInput); assert.equal(await global.locator('.network-query-table').innerText(), cachedTable);
+  assert.ok((await global.locator('.network-query-progress>span').innerText()).includes(cachedTime.split(' · ')[0]));
+  await page.getByRole('button', { name: '单台设备', exact: true }).click();
+  await page.getByRole('tab', { name: 'ARP 查询', exact: true }).click();
+  assert.equal(await page.getByLabel('ARP 查询地址', { exact: true }).inputValue(), '192.0.2.99');
+  assert.equal(await page.locator('.network-query-panel:visible .network-query-table tbody tr').count(), 1);
+  await page.getByRole('button', { name: '全网查询', exact: true }).click();
+  assert.equal(await global.locator('.network-query-table').innerText(), cachedTable);
+
   await page.setViewportSize({ width: 1040, height: 740 });
   await page.getByRole('button', { name: '偏好设置', exact: true }).click(); await page.getByRole('combobox', { name: '界面字号', exact: true }).selectOption('18'); await page.locator('.theme-option').filter({ hasText: '布布一二' }).click();
   await page.getByRole('button', { name: '网络管理', exact: true }).click(); await page.getByRole('button', { name: '全网查询', exact: true }).click();
@@ -93,7 +112,7 @@ try {
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].show());
   await poll(async () => page.evaluate(() => window.harbor!.windowVisible()), 5000);
   await page.getByRole('button', { name: '单台设备', exact: true }).click();
-  await page.getByRole('tab', { name: 'ARP 查询', exact: true }).click(); await page.getByLabel('ARP 查询地址', { exact: true }).fill('192.0.2.99'); await page.getByRole('button', { name: '查询当前设备', exact: true }).click(); await poll(async () => (await page.locator('.network-query-progress').innerText()).includes('本轮完成'), 10000);
+  await page.getByRole('tab', { name: 'ARP 查询', exact: true }).click(); await page.getByLabel('ARP 查询地址', { exact: true }).fill('192.0.2.99'); await page.getByRole('button', { name: '查询当前设备', exact: true }).click(); await poll(async () => (await page.locator('.network-query-panel:visible .network-query-progress').innerText()).includes('本轮完成'), 10000);
   assert.equal(fixture.writes.length, 0); assert.ok(!(await fs.readFile(path.join(directory, 'config.json'), 'utf8')).includes('fixture-read')); assert.deepEqual(errors, []);
-  console.log('Network IP UI passed: grouped uniform credentials, preserved custom ports, ARP, LPM/ECMP routes, IP brief, scoped network auto IP/MAC, MAC formats, per-device timeout/coverage, polling controls, cancellation/native window visibility/navigation cleanup, Ctrl+K and 18px Bubu small-window layout; no SNMP SET.');
+  console.log('Network IP UI passed (retained query rows/input/time across navigation, tab/mode switches and paused hidden refresh): grouped uniform credentials, preserved custom ports, ARP, LPM/ECMP routes, IP brief, scoped network auto IP/MAC, MAC formats, per-device timeout/coverage, polling controls, cancellation/native window visibility/navigation cleanup, Ctrl+K and 18px Bubu small-window layout; no SNMP SET.');
 } finally { if (app) await app.close(); await fixture.close(); await new Promise<void>(resolve => blackhole.close(resolve)); await fs.rm(directory, { recursive: true, force: true }); }

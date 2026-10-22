@@ -13,12 +13,12 @@ for (const dir of [remote, local, downloads]) await fs.mkdir(dir);
 await fs.mkdir(path.join(remote, '服务器文档')); await fs.writeFile(path.join(remote, 'README.txt'), 'SFTP 和终端共享 SSH 连接');
 const content = randomBytes(512 * 1024 + 7), source = path.join(local, '上传验证.bin'); await fs.writeFile(source, content);
 const folder = path.join(local, '项目文件夹'); await fs.mkdir(path.join(folder, '子目录'), { recursive: true }); await fs.writeFile(path.join(folder, '子目录', '配置.txt'), '中文文件夹传输');
-const fixture = await sshFixture({ root: remote, writeDelay: 35, singleSession: process.env.HARBOR_SFTP_SINGLE_CHANNEL === '1' }); const env = { ...process.env, DISPLAY: process.env.DISPLAY || ':0', HARBOR_TEST_DATA: directory }; delete env.ELECTRON_RUN_AS_NODE;
+const fixture = await sshFixture({ root: remote, writeDelay: 35, singleSession: process.env.HARBOR_SFTP_SINGLE_CHANNEL === '1', stallSubsystemAfterShell: process.env.HARBOR_SFTP_STALLED === '1', volumeRoot: process.env.HARBOR_SFTP_VOLUME || undefined }); const env = { ...process.env, DISPLAY: process.env.DISPLAY || ':0', HARBOR_TEST_DATA: directory }; delete env.ELECTRON_RUN_AS_NODE;
 let app: Awaited<ReturnType<typeof electron.launch>> | undefined;
 try {
   app = await electron.launch({ args: [process.env.HARBOR_SMOKE_APP || '.', '--no-sandbox', '--ozone-platform=x11'], env, timeout: 20000 });
   await app.evaluate(({ dialog }, paths) => { dialog.showMessageBox = async () => ({ response: 1, checkboxChecked: false }); dialog.showOpenDialog = async (_window: unknown, opts: { title?: string }) => ({ canceled: false, filePaths: opts.title?.includes('下载') ? [paths.downloads] : opts.title?.includes('文件夹') ? [paths.folder] : [paths.source] }); }, { downloads, folder, source });
-  const page = await app.firstWindow(); page.setDefaultTimeout(20000); const errors: string[] = []; page.on('pageerror', e => errors.push(e.message));
+  const page = await app.firstWindow(); page.setDefaultTimeout(process.env.HARBOR_SFTP_STALLED ? 45000 : 20000); const errors: string[] = []; page.on('pageerror', e => errors.push(e.message));
   await page.getByRole('heading', { name: '设置软件密码', exact: true }).waitFor(); await page.getByLabel('软件密码', { exact: true }).fill('sftp-ui-master-password'); await page.getByLabel('确认软件密码', { exact: true }).fill('sftp-ui-master-password'); await page.getByRole('button', { name: '设置密码并进入', exact: true }).click();
   await page.getByRole('heading', { name: '连接管理', exact: true }).waitFor();
   const p = profile(fixture.port, { name: 'SFTP 集成测试' }); await page.evaluate(p => window.harbor!.saveProfile({ profile: p, secrets: { password: 'test-secret' } }), p); await page.reload();
@@ -26,6 +26,16 @@ try {
   const id = await page.evaluate(async () => (await window.harbor!.initial()).runtime.sessions[0].id);
   await page.getByRole('button', { name: 'SFTP 文件管理', exact: true }).click();
   await page.getByRole('button', { name: 'README.txt', exact: true }).waitFor();
+  if (process.env.HARBOR_SFTP_STALLED) await page.getByText('独立 SFTP 连接 · SSH 终端可同时使用', { exact: true }).waitFor();
+  if (process.env.HARBOR_SFTP_VOLUME) {
+    await page.getByRole('button', { name: '服务器文档', exact: true }).click(); await page.getByText('此目录为空，可上传文件', { exact: true }).waitFor();
+    const remotePath = page.getByLabel('远程目录路径', { exact: true });
+    await remotePath.fill(process.env.HARBOR_SFTP_VOLUME + '/'); await remotePath.press('Enter');
+    await page.getByRole('button', { name: 'README.txt', exact: true }).waitFor();
+    assert.equal(await remotePath.inputValue(), process.env.HARBOR_SFTP_VOLUME + '/');
+    assert.equal(await page.getByRole('button', { name: 'SFTP 上级目录', exact: true }).isDisabled(), true);
+  }
+
   await page.getByRole('button', { name: '新建远程文件夹', exact: true }).click(); await page.getByLabel('远程名称', { exact: true }).fill('新建目录'); await page.getByRole('button', { name: '保存', exact: true }).click(); await page.getByRole('button', { name: '新建目录', exact: true }).waitFor();
   await page.getByRole('button', { name: '新建目录', exact: true }).click(); await page.getByText('此目录为空，可上传文件', { exact: true }).waitFor(); await page.getByRole('button', { name: 'SFTP 上级目录', exact: true }).click(); await page.getByRole('button', { name: 'README.txt', exact: true }).waitFor();
   await page.getByRole('button', { name: '上传文件', exact: true }).click();
@@ -48,7 +58,7 @@ try {
   await page.getByRole('button', { name: '取消传输 取消测试.bin', exact: true }).click(); await page.getByText('已取消', { exact: true }).waitFor();
   assert.equal((await page.evaluate(() => window.harbor!.initial())).runtime.sessions[0].status, 'connected');
   await page.getByRole('button', { name: '服务器文档', exact: true }).click(); await page.getByText('此目录为空，可上传文件', { exact: true }).waitFor();
-  await page.getByRole('button', { name: '收起文件面板', exact: true }).click(); assert.equal(await page.locator('.sftp-panel').isVisible(), false); await page.getByRole('button', { name: 'SFTP 文件管理', exact: true }).click(); await page.getByText('已取消', { exact: true }).waitFor(); assert.equal(await page.getByLabel('远程目录路径', { exact: true }).inputValue(), '/服务器文档');
+  await page.getByRole('button', { name: '收起文件面板', exact: true }).click(); assert.equal(await page.locator('.sftp-panel').isVisible(), false); await page.getByRole('button', { name: 'SFTP 文件管理', exact: true }).click(); await page.getByText('已取消', { exact: true }).waitFor(); assert.equal(await page.getByLabel('远程目录路径', { exact: true }).inputValue(), (process.env.HARBOR_SFTP_VOLUME || '') + '/服务器文档');
   await page.getByRole('button', { name: '偏好设置', exact: true }).click(); await page.getByRole('combobox', { name: '界面字号', exact: true }).selectOption('18'); await page.getByRole('button', { name: 'SSH 终端', exact: true }).click();
   const queue = await page.locator('.transfer-list').boundingBox(); const panel = await page.locator('.sftp-panel').boundingBox(); assert.ok(queue && panel && queue.height >= 50 && queue.y + queue.height <= panel.y + panel.height + 2, JSON.stringify({ queue, panel }));
   await page.screenshot({ path: 'test-results/28-sftp-readable-18px.png' });

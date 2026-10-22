@@ -7,8 +7,10 @@ import { Manager } from '../electron/manager';
 import { localName, remoteName } from '../electron/sftp';
 import type { FileTransfer } from '../shared/types';
 import { freePort, profile, sshFixture, tempStore, until } from './helpers';
+import type { SftpFixtureOptions } from './sftp-fixture';
+import { remoteRoot, resolveRemoteInput, remoteParent } from '../shared/sftp-path';
 
-async function setup(options: { writeDelay?: number; deny?: string; singleSession?: boolean } = {}) {
+async function setup(options: Omit<SftpFixtureOptions, 'root' | 'channels'> = {}) {
   const temp = await tempStore(); const remote = path.join(temp.directory, 'remote'); const local = path.join(temp.directory, 'local'); const downloaded = path.join(temp.directory, 'downloads');
   for (const dir of [remote, local, downloaded]) await fs.mkdir(dir);
   const channels = { count: 0 }, fixture = await sshFixture({ root: remote, channels, ...options }); const events: FileTransfer[][] = [];
@@ -99,6 +101,39 @@ test('SFTP path/name checks prevent local traversal and unsafe Windows filenames
   for (const value of ['../escape', '.', '..', '/root', '', 'bad\0name']) assert.throws(() => remoteName(value));
   for (const value of ['CON', 'nul.txt', 'a\\b', 'bad:name', 'tail.', 'tail ', 'x?']) assert.throws(() => localName(value));
   assert.equal(localName('中文 名称.txt'), '中文 名称.txt');
+  assert.equal(resolveRemoteInput('/old', 'flash:/'), 'flash:/');
+  assert.equal(resolveRemoteInput('/old', '/'), '/');
+  assert.equal(resolveRemoteInput('flash:/cfg', 'child'), 'flash:/cfg/child');
+  for (const root of ['/', 'flash:', 'flash:/', 'hda1:/', 'slot1#flash:/dir/..']) assert.equal(remoteRoot(root), true);
+  assert.equal(remoteRoot('flash:/cfg'), false); assert.equal(remoteParent('flash:/cfg'), 'flash:/');
+});
+
+for (const stalled of [false, true]) test(`SFTP ${stalled ? 'startup timeout' : 'subsystem rejection'} retries once on an independent verified connection and preserves terminal IO`, async () => {
+  const t = await setup(stalled ? { stallSubsystemAfterShell: true } : { rejectSubsystemAfterShell: true });
+  try {
+    await fs.writeFile(path.join(t.remote, 'vrpcfg.zip'), 'fixture config');
+    const root = await t.manager.sftp.list(t.id, '/'); assert.equal(root.transport, 'separate'); assert.equal(root.entries[0].name, 'vrpcfg.zip');
+    assert.equal(t.fixture.connectionCount(), 2);
+    await t.manager.sftp.download(t.id, ['/vrpcfg.zip'], t.downloaded, false); await idle(t);
+    assert.equal(t.manager.sftp.transfers(t.id).at(-1)?.status, 'success');
+    assert.equal(await fs.readFile(path.join(t.downloaded, 'vrpcfg.zip'), 'utf8'), 'fixture config');
+    t.manager.write(t.id, 'after-sftp-startup-retry\r'); await until(() => t.manager.readTerminal(t.id).data.some(chunk => Buffer.from(chunk, 'base64').toString().includes('after-sftp-startup-retry')));
+    t.manager.disconnect(t.id); await until(() => t.fixture.connectionCount() === 0);
+  } finally { await t.close(); }
+});
+
+test('device-volume directories survive navigation and transfer when REALPATH is unsupported, with root deletion protected', async () => {
+  const t = await setup({ volumeRoot: 'flash:', noRealpath: true });
+  try {
+    await fs.mkdir(path.join(t.remote, 'cfg')); await fs.writeFile(path.join(t.remote, 'cfg', 'startup.cfg'), 'device config');
+    const root = await t.manager.sftp.list(t.id, 'flash:/'); assert.equal(root.path, 'flash:/'); assert.equal(root.entries[0].path, 'flash:/cfg');
+    const cfg = await t.manager.sftp.list(t.id, root.entries[0].path); assert.equal(cfg.entries[0].path, 'flash:/cfg/startup.cfg');
+    await t.manager.sftp.download(t.id, [cfg.entries[0].path], t.downloaded, false); await idle(t); assert.equal(await fs.readFile(path.join(t.downloaded, 'startup.cfg'), 'utf8'), 'device config');
+    await fs.writeFile(path.join(t.local, 'new.cfg'), 'new config'); await t.manager.sftp.upload(t.id, [path.join(t.local, 'new.cfg')], 'flash:/cfg', false); await idle(t); assert.equal(await fs.readFile(path.join(t.remote, 'cfg', 'new.cfg'), 'utf8'), 'new config');
+    await assert.rejects(t.manager.sftp.rename(t.id, 'flash:/', 'bad'), /根目录/);
+    assert.match((await t.manager.sftp.remove(t.id, ['flash:/']))[0].error!, /根目录/);
+    await assert.rejects(t.manager.sftp.list(t.id, 'flash:/missing'), /OPENDIR.*状态 2/);
+  } finally { await t.close(); }
 });
 
 test('servers without an SFTP subsystem report a file-panel error while the SSH terminal remains usable', async () => {

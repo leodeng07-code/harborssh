@@ -6,8 +6,8 @@
 
 适用目标：Windows 10 / 11，x64。
 
-- 安装版：运行 `HarborSSH-0.6.1-setup-x64.exe`，按向导选择安装目录。
-- 免安装版：将 `HarborSSH-0.6.1-windows-x64.zip` **完整解压**到一个文件夹，再运行 `Harbor SSH.exe`。请保留所有 DLL、resources 和其他随附文件。
+- 安装版：运行 `HarborSSH-0.6.2-setup-x64.exe`，按向导选择安装目录。
+- 免安装版：将 `HarborSSH-0.6.2-windows-x64.zip` **完整解压**到一个文件夹，再运行 `Harbor SSH.exe`。请保留所有 DLL、resources 和其他随附文件。
 - 首次运行为空连接库，可以点击“新建连接”或“导入 Excel”。
 - 这是未签名的测试版。Windows 可能显示发布者验证提示；请先确认文件来源和随附 SHA256 校验值。
 
@@ -106,7 +106,9 @@ SSH 页直接显示终端标签及内容，打开连接移到顶部工具栏，�
 
 ## SFTP 文件传输
 
-连接主机后，在终端右上角点击 **文件**，打开并排的远程文件面板。拖动中间的分隔条可调整宽度，收起文件面板后传输仍会继续。每个终端标签拥有自己的远程目录与传输记录。SFTP 优先复用当前 SSH 连接；遇到 `Channel open failure` 时自动尝试独立 SSH 连接并重新验证主机指纹，使用当前连接的主机与账号及已保存的凭据，不切换到编辑后的其他主机。兼容模式下目录与传输共用一个 SFTP 通道，取消单项任务不会结束其他任务或交互终端；关闭终端会关闭独立文件连接。普通 Linux/OpenSSH 服务器继续使用原连接与独立传输子通道。
+连接主机后，在终端右上角点击 **文件**，打开并排的远程文件面板。拖动中间的分隔条可调整宽度，收起文件面板后传输仍会继续。每个终端标签拥有自己的远程目录与传输记录。SFTP 优先复用当前 SSH 连接；遇到通道拒绝、SFTP 子系统拒绝或 20 秒启动超时时，自动尝试一次独立 SSH 连接并重新验证主机指纹，使用当前连接的主机与账号及已保存的凭据，不切换到编辑后的其他主机。兼容模式下目录与传输共用一个 SFTP 通道，取消单项任务不会结束其他任务或交互终端；关闭终端会关闭独立文件连接。普通 Linux/OpenSSH 服务器继续使用原连接与独立传输子通道。
+
+文件面板会区分“复用当前 SSH 连接”和“独立 SFTP 连接”，并在失败时标明连接启动、REALPATH 路径解析或 READDIR 目录读取阶段。地址框支持 `/` 和 `flash:/`、`hda1:/`、`slot1#flash:/` 等设备路径，不把存储卷当作相对目录拼接。设备明确返回不支持 REALPATH 时，会用 OPENDIR 验证同一个目录后访问；权限不足或目录不存在仍会报错，不自动换到其他根目录。设备卷根目录不能删除或重命名。
 
 SSH 能登录不代表 SFTP 已开放。交换机需启用 SFTP 服务、允许当前账号访问且设置可访问的工作目录；设备的 SSH/SFTP 在线用户数限制也可能拒绝连接。若独立连接仍失败，面板会给出错误，不会自动重发文件写入或改用 FTP/TFTP。部分交换机不支持 OpenSSH 安全覆盖扩展，上传新名称通常可用，覆盖现有文件仍会明确报错并保留原文件。
 
@@ -221,6 +223,22 @@ Windows 配置通常位于 `%APPDATA%\harborssh\config.json`。免安装版同�
 | Ctrl + C | 有选区时复制，无选区时向远程终端发送中断 |
 | R | 会话已断开或失败时重新连接；已连接时仍输入普通字符 |
 
+## SNMP 超时检测与结果保留
+
+网管结果在本次软件运行期间保留。切换到 SSH / 连接库 / 设置再回来，以及在单台 / 全网和 IP 查询标签之间切换，会保留各自的查询结果、输入、筛选及读取时间。离开该查询会取消未完成的全网任务并暂停自动刷新；回来显示上次数据，点击查询可更新。切换目标设备会清除该设备面板的旧结果，避免误认；关闭软件或刷新整个窗口不保留结果。
+
+SNMP 配置 → 超时与兼容设置可为单台设备设置请求超时（500–10000 毫秒）、读取重试（0–2 次）和 GETBULK 每批条数（1–50）。旧配置继续使用 1800 毫秒、1 次重试、30 条；批量统一团体名保留各设备的这些设置。大批量 GETBULK 超时后，仅对读取操作缩小到每批 5 条重试一次，并在当前会话继续使用小批量；失败尝试的部分表数据不会拼接为完整结果。整体单次 SNMP 会话仍限 45 秒，SET 写入不重试。响应慢可尝试 5000 毫秒；GET 正常但 GETBULK 超时，可将每批条数降至 5。团体名、版本或访问控制不匹配无法靠延长超时解决。
+
+安装目录 / ZIP 根目录附带 `Test-HarborSnmp.ps1`，可在出现问题的同一台 Windows 电脑运行（Windows PowerShell 5.1 或 PowerShell 7，无需安装 SNMP 模块）：
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Test-HarborSnmp.ps1 -ComputerName 192.0.2.1
+```
+
+将示例 IP 替换为待测设备管理 IP；如端口不是 161，添加 `-Port 端口号`。脚本隐藏输入只读团体名，依次发送 sysUpTime 单条 GET、Harbor 初始化系统 GET、小批量 IF-MIB GETBULK；只读，不发送 SET，不保存配置或输出团体名。`noSuchObject` / `noSuchInstance` 表示设备确实回了包，但对象或视图不可读取，不能与网络超时混为一谈。`Test-NetConnection -Port 161` 测试 TCP，不能代替此 UDP SNMP 检测。
+
+三项均无响应时，检查设备是否启用 SNMP v2c、团体名和 UDP 端口是否一致、管理接口是否允许 SNMP、源管理地址对应的 ACL / 防火墙 Local 安全策略，以及返回路由。华为设备的具体命令按型号和版本核对：[官方 SNMPv2c 配置说明](https://info.support.huawei.com/hedex/api/pages/EDOC1000053358/YEF0907R/25/resources/en-us_task_0141556807.html)。单条 GET 成功、系统 GET 失败时，请记录检测输出；GET 成功而表查询失败时，继续核对 IF-MIB 视图、报文大小和设备响应。需要对比大批量及接口名称 / 描述列时，添加 `-Extended -MaxRepetitions 30`；可再改为 5 对照响应。测试输出可用于排障，无需分享团体名。
+
 ## 开发与构建
 
 Node.js 22.12 或以上，建议使用 Node.js 24。在项目目录运行：
@@ -237,6 +255,7 @@ npm run check        # TypeScript 检查
 npm test             # SSH / 隧道 / 配置 / Excel / 分组集成检查
 npm run build        # 生产前端与 Electron 代码
 npm run test:ui      # Electron 界面冒烟检查，需要图形桌面
+npm run test:snmp-probe # PowerShell 只读 UDP 检测，需要 pwsh 或 PWSH_BINARY
 npm run test:sftp    # SFTP 真协议、终端并行、上传下载、目录操作、取消和布局
 npm run test:mac-mode # MAC 端口类型、Trunk 折叠、未知/Hybrid 保留、刷新及小窗口
 npm run test:sidebar # 多 SSH 会话、独立滚动、会话切换、导入按钮及大字号小窗口

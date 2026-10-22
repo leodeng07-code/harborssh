@@ -3,6 +3,7 @@ import { promises as fs } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import type { AppEvent, FileTransfer, RemoteDirectory, RemoteFile } from '../shared/types';
+import { remoteRoot } from '../shared/sftp-path';
 
 const posix = path.posix;
 const active = (t: FileTransfer) => ['queued', 'preparing', 'running'].includes(t.status);
@@ -18,7 +19,13 @@ function failure(error: unknown) {
   if (e.code === 2 || e.code === 'ENOENT') return '文件或目录不存在';
   if (e.code === 3 || e.code === 'EACCES' || e.code === 'EPERM') return '权限不足';
   if (e.code === 'ENOSPC') return '磁盘空间不足';
+  if (e.code === 8) return '服务器不支持此 SFTP 操作';
   return e.message || String(error);
+}
+const retrySeparate = (error: unknown) => /Channel open failure|Unable to start subsystem: sftp\b|开启 SFTP 超时/i.test(failure(error));
+function operationError(operation: string, filename: string, error: unknown) {
+  const code = (error as { code?: number | string }).code;
+  return new Error(`${operation} 失败（${filename}${code === undefined ? '' : `，SFTP 状态 ${code}`}）：${failure(error)}`);
 }
 interface Job { info: FileTransfer; controller: AbortController; run: () => Promise<void> }
 interface Plan { source: string; destination: string; directory: boolean; size: number }
@@ -35,6 +42,7 @@ export class SftpService {
     else if (!this.eventTimers.has(id)) this.eventTimers.set(id, setTimeout(() => { this.eventTimers.delete(id); this.emit({ type: 'transfers', sessionId: id, data: this.transfers(id) }); }, 150));
   }
   private closedChannels = new WeakSet<SFTPWrapper>();
+  private separateChannels = new WeakSet<SFTPWrapper>();
   private async openChannel(id: string, separate = false): Promise<SFTPWrapper> {
     if (separate) this.closeSeparate?.(id);
     const client = separate ? await this.separateClient!(id) : this.getClient(id);
@@ -45,7 +53,7 @@ export class SftpService {
       const done = (error?: Error, sftp?: SFTPWrapper) => {
         if (settled) { sftp?.end(); return; } settled = true; clearTimeout(timer); client.off('close', closed);
         if (error || !sftp) { reject(new Error(`无法开启 SFTP：${failure(error || new Error('子系统不可用'))}`)); return; }
-        sftp.on('error', () => {}); sftp.once('close', () => this.closedChannels.add(sftp)); resolve(sftp);
+        sftp.on('error', () => {}); sftp.once('close', () => this.closedChannels.add(sftp)); if (separate) this.separateChannels.add(sftp); resolve(sftp);
       };
       client.once('close', closed); client.sftp((error, sftp) => done(error, sftp));
     });
@@ -55,13 +63,14 @@ export class SftpService {
     if (!this.channels.has(id)) {
       const separate = async () => {
         try { return await this.openChannel(id, true); }
-        catch (separateError) { this.closeSeparate?.(id); throw new Error(`复用 SSH 通道被拒绝；独立 SFTP 连接也未成功：${failure(separateError)}。请核对设备 SFTP 服务、账号授权及 SSH 连接数限制。`); }
+        catch (separateError) { this.closeSeparate?.(id); throw new Error(`当前 SSH 连接无法启动 SFTP；独立 SFTP 连接也未成功：${failure(separateError)}。请核对设备 SFTP 服务、账号授权及 SSH 连接数限制。`); }
       };
       const opening = this.compatibility.has(id) ? separate() : this.openChannel(id).catch(async error => {
-        // Some network devices reject a second session channel after a shell
-        // has opened. Retry only channel-open rejection, once, on a new SSH
-        // transport; never retry a file write or an authentication failure.
-        if (!this.separateClient || !/Channel open failure/i.test(failure(error))) throw error;
+        // A shell may prevent a device from answering a second SFTP subsystem.
+        // Retry only startup rejection/timeout, once, on a fresh verified SSH
+        // transport. File operations and authentication errors are not retried.
+        if (!this.separateClient || !retrySeparate(error)) throw error;
+        this.emit({ type: 'notice', message: 'SFTP 子通道未就绪，正在重试独立文件连接…', error: false });
         this.compatibility.add(id); return separate();
       }); this.channels.set(id, opening);
       void opening.then(sftp => sftp.once('close', () => { if (this.channels.get(id) === opening) this.channels.delete(id); })).catch(() => { if (this.channels.get(id) === opening) this.channels.delete(id); });
@@ -84,17 +93,27 @@ export class SftpService {
     try { return await this.request<Stats>(sftp, done => sftp.lstat(filename, done), signal); }
     catch (error) { if ((error as { code?: number }).code === 2) return undefined; throw error; }
   }
-  private async canonical(sftp: SFTPWrapper, value: string, signal?: AbortSignal) {
+  private async canonical(sftp: SFTPWrapper, value: string, signal?: AbortSignal): Promise<string> {
     value = remotePath(value);
-    if (value === '~' || value.startsWith('~/')) { const home = await this.request<string>(sftp, done => sftp.realpath('.', done), signal); value = posix.join(home, value.slice(2)); }
-    return this.request<string>(sftp, done => sftp.realpath(value, done), signal);
+    if (value === '~' || value.startsWith('~/')) { const home = await this.canonical(sftp, '.', signal); value = posix.join(home, value.slice(2)); }
+    try { return await this.request<string>(sftp, done => sftp.realpath(value, done), signal); }
+    catch (error) {
+      // A small SFTP implementation may support OPENDIR but not REALPATH.
+      // Verify exactly the requested directory; never guess a different root.
+      if ((error as { code?: number }).code === 8) {
+        const handle = await this.request<Buffer>(sftp, done => sftp.opendir(value, done), signal).catch(error => { throw operationError('打开目录 OPENDIR', value, error); });
+        await this.request<void>(sftp, done => sftp.close(handle, done), signal);
+        return value;
+      }
+      throw operationError('解析目录 REALPATH', value, error);
+    }
   }
   async list(id: string, directory: string): Promise<RemoteDirectory> {
     try {
       const sftp = await this.channel(id), resolved = await this.canonical(sftp, directory);
-      const entries = await this.request<FileEntryWithStats[]>(sftp, done => sftp.readdir(resolved, done));
+      const entries = await this.request<FileEntryWithStats[]>(sftp, done => sftp.readdir(resolved, done)).catch(error => { throw operationError('读取目录 READDIR', resolved, error); });
       if (entries.length > 20000) throw new Error('目录条目超过 20000 个，请进入更具体的目录');
-      return { path: resolved, entries: entries.filter(e => e.filename !== '.' && e.filename !== '..').map(e => {
+      return { path: resolved, transport: this.separateChannels.has(sftp) ? 'separate' : 'shared', entries: entries.filter(e => e.filename !== '.' && e.filename !== '..').map(e => {
         remoteName(e.filename); const s = e.attrs;
         return { name: e.filename, path: posix.join(resolved, e.filename), type: s.isDirectory() ? 'directory' : s.isFile() ? 'file' : s.isSymbolicLink() ? 'link' : 'other', size: Number.isFinite(s.size) ? s.size : 0, modified: Number.isFinite(s.mtime) ? s.mtime * 1000 : 0, mode: s.mode || 0 } as RemoteFile;
       }).sort((a, b) => Number(b.type === 'directory') - Number(a.type === 'directory') || a.name.localeCompare(b.name, 'zh-CN', { numeric: true })) };
@@ -105,7 +124,7 @@ export class SftpService {
     await this.request<void>(sftp, done => sftp.mkdir(posix.join(parent, remoteName(name)), { mode: 0o755 }, done)).catch(e => { throw new Error(failure(e)); });
   }
   async rename(id: string, filename: string, name: string) {
-    const sftp = await this.channel(id); filename = remotePath(filename); if (posix.normalize(filename) === '/') throw new Error('不能重命名根目录');
+    const sftp = await this.channel(id); filename = remotePath(filename); if (remoteRoot(filename)) throw new Error('不能重命名根目录');
     const destination = posix.join(posix.dirname(filename), remoteName(name));
     if (destination === filename) return;
     if (await this.maybeStat(sftp, destination)) throw new Error('目标名称已存在');
@@ -115,7 +134,7 @@ export class SftpService {
     const sftp = await this.channel(id), results: { path: string; error?: string }[] = [];
     for (let filename of filenames) {
       try {
-        filename = remotePath(filename); if (['/', '.', '..'].includes(posix.normalize(filename))) throw new Error('不能删除根目录或当前目录');
+        filename = remotePath(filename); if (remoteRoot(filename) || ['.', '..'].includes(posix.normalize(filename))) throw new Error('不能删除根目录或当前目录');
         const stats = await this.request<Stats>(sftp, done => sftp.lstat(filename, done));
         await this.request<void>(sftp, done => stats.isDirectory() ? sftp.rmdir(filename, done) : sftp.unlink(filename, done)); results.push({ path: filename });
       } catch (error) { results.push({ path: filename, error: failure(error) }); }
@@ -152,7 +171,7 @@ export class SftpService {
     const { info, controller } = job, signal = controller.signal, plan: Plan[] = [];
     let shared = this.compatibility.has(info.sessionId);
     const sftp = shared ? await this.channel(info.sessionId) : await this.openChannel(info.sessionId).catch(error => {
-      if (!this.separateClient || !/Channel open failure/i.test(failure(error))) throw error;
+      if (!this.separateClient || !retrySeparate(error)) throw error;
       shared = true; this.compatibility.add(info.sessionId); return this.channel(info.sessionId);
     });
     const inspect = async (src: string, dst: string, depth: number) => {

@@ -34,36 +34,53 @@ class Reader {
   private closed = false;
   private failure?: Error;
   private pending = new Set<(error: Error) => void>();
-  constructor(private session: Session) {
+  constructor(private session: Session, private context: string, private maxRepetitions: number) {
     (session as unknown as EventEmitter).on('error', () => this.abort(new Error('SNMP 网络连接错误')));
     this.timer = setTimeout(() => this.abort(new Error('SNMP 查询超过 45 秒，请检查设备、ACL 和 Community')), 45_000);
   }
   private abort(error: Error) { if (this.closed) return; this.failure = error; for (const reject of [...this.pending]) reject(error); this.close(); }
-  private request<T>(invoke: (done: (error: Error | null, result?: T) => void) => void): Promise<T> {
+  private request<T>(invoke: (done: (error: Error | null, result?: T) => void) => void, operation: string): Promise<T> {
     if (this.closed) return Promise.reject(this.failure || new Error('SNMP 会话已关闭'));
     return new Promise((resolve, reject) => {
       const fail = (error: Error) => { this.pending.delete(fail); reject(error); };
       this.pending.add(fail);
-      const done = (error: Error | null, result?: T) => { this.pending.delete(fail); if (error) reject(new Error('SNMP 请求失败，请检查设备支持情况、访问权限和网络：' + error.message.replace(/community\s*[:=].*/ig, '[已隐藏]'))); else resolve(result as T); };
+      const done = (error: Error | null, result?: T) => {
+        this.pending.delete(fail);
+        if (error && /timed?\s*out|timeout/i.test(error.message)) reject(new Error(`SNMP 未收到设备响应（${this.context}，${operation}）：Request timed out。请核对 SNMP v2c、团体名、UDP 端口、接口管理访问及管理网 ACL / 防火墙 Local 安全策略；若仅 GETBULK 超时，可降低每批条数或增加请求超时。`));
+        else if (error) reject(new Error(`SNMP ${operation} 请求失败（${this.context}）：` + error.message.replace(/community\s*[:=].*/ig, '[已隐藏]')));
+        else resolve(result as T);
+      };
       try { invoke(done); } catch { fail(new Error('SNMP 请求无法发送')); }
     });
   }
-  get(oids: string[]) { return this.request<Varbind[]>(done => this.session.get(oids, (err, vars) => done(err, vars?.filter(v => !snmp.isVarbindError(v))))); }
+  get(oids: string[]) { return this.request<Varbind[]>(done => this.session.get(oids, (err, vars) => done(err, vars?.filter(v => !snmp.isVarbindError(v)))), 'GET'); }
   set(varbind: Varbind) { return this.request<Varbind[]>(done => this.session.set([varbind], (err, vars) => {
     const invalid = vars?.find(v => snmp.isVarbindError(v));
     done(err || (invalid ? new Error(snmp.varbindError(invalid)) : null), vars);
-  })); }
-  walk(oid: string) {
-    return this.request<Varbind[]>(done => {
+  }), 'SET'); }
+  async walk(oid: string): Promise<Varbind[]> {
+    const read = (batch: number) => this.request<Varbind[]>(done => {
       const values: Varbind[] = []; let stopped = false;
-      this.session.subtree(oid, 30, vars => {
+      this.session.subtree(oid, batch, vars => {
         if (stopped || this.closed) return true;
         for (const v of vars) {
           if (!snmp.isVarbindError(v) && v.oid.startsWith(oid + '.')) values.push(v);
           if (values.length > 100_000) { stopped = true; done(new Error('表超过 100000 项，查询已停止，结果未标记为完整')); return true; }
         }
       }, error => { if (!stopped) done(error, values); });
-    });
+    }, `GETBULK ${oid}（每批 ${batch} 条）`);
+    const batch = this.maxRepetitions;
+    try { return await read(batch); }
+    catch (error) {
+      // A reachable agent may drop large/fragmented GETBULK responses. Retry
+      // this read once with a smaller batch; discard partial first-attempt data.
+      // The shared 45-second deadline and close/cancellation still apply.
+      if (!this.closed && batch > 5 && /Request timed out/.test((error as Error).message)) {
+        this.maxRepetitions = Math.min(this.maxRepetitions, 5);
+        return read(this.maxRepetitions);
+      }
+      throw error;
+    }
   }
   close() { if (this.closed) return; this.closed = true; clearTimeout(this.timer); for (const reject of [...this.pending]) reject(this.failure || new Error('SNMP 查询已关闭')); this.session.close(); }
 }
@@ -89,7 +106,7 @@ export class SnmpService {
     signal?.throwIfAborted();
     if (this.disposed) throw new Error('SNMP 服务已关闭');
     if (!target || !community) throw new Error(write ? '请先单独配置读写 Community' : '请先配置 SNMP v2c 只读 Community');
-    reader = new Reader(snmp.createSession(p.host, community, { port: target.port, version: snmp.Version2c, transport: isIP(p.host) === 6 ? 'udp6' : 'udp4', timeout: 1800, retries: write ? 0 : 1, backoff: 1 }));
+    reader = new Reader(snmp.createSession(p.host, community, { port: target.port, version: snmp.Version2c, transport: isIP(p.host) === 6 ? 'udp6' : 'udp4', timeout: target.timeoutMs ?? 1800, retries: write ? 0 : target.retries ?? 1, backoff: 1 }), `${p.host} · UDP ${target.port}`, target.maxRepetitions ?? 30);
     this.active.add(reader);
     } finally { this.opening--; }
     const cancel = () => reader.close(); signal?.addEventListener('abort', cancel, { once: true });

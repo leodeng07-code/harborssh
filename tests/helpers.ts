@@ -32,8 +32,11 @@ export async function sshFixture(sftpOptions?: SftpFixtureOptions, execHandler?:
     client.on('ready', () => {
       let sessions = 0;
       client.on('session', (accept, reject) => {
-        if (sftpOptions?.singleSession && sessions++) { reject(); return; }
-        const session = accept(); if (sftpOptions) attachSftp(session, sftpOptions);
+        const sessionIndex = sessions++;
+        if (sftpOptions?.singleSession && sessionIndex) { reject(); return; }
+        const session = accept();
+        if (sessionIndex && (sftpOptions?.rejectSubsystemAfterShell || sftpOptions?.stallSubsystemAfterShell)) session.on('sftp', (_accept, reject) => { if (sftpOptions.rejectSubsystemAfterShell) reject(); });
+        else if (sftpOptions) attachSftp(session, sftpOptions);
         session.on('pty', (accept, _reject, info) => { sizes.push({ cols: info.cols, rows: info.rows }); accept?.(); });
         session.on('window-change', (accept, _reject, info) => { sizes.push({ cols: info.cols, rows: info.rows }); accept?.(); });
         session.on('shell', accept => {

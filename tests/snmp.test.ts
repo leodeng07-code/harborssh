@@ -17,6 +17,30 @@ test('MAC inputs and unsafe mappings are validated', () => {
   assert.equal(interfaceChangeSchema.safeParse({ profileId: p.id, index: 1, field: 'adminStatus', value: 7, expected: 1 }).success, false);
   assert.equal(interfaceChangeSchema.safeParse({ profileId: p.id, index: 1, field: 'alias', value: '中'.repeat(22), expected: '' }).success, false);
   assert.equal(snmpConfigSchema.safeParse({ profileId: p.id, port: 161, parameters: [{ ...testMappings[0], choices: [{ label: 'invalid', value: '1000' }] }] }).success, false);
+  for (const options of [{ timeoutMs: 0 }, { timeoutMs: 10001 }, { retries: 3 }, { maxRepetitions: 0 }]) assert.equal(snmpConfigSchema.safeParse({ profileId: p.id, port: 161, ...options }).success, false);
+});
+
+test('SNMP timeout identifies transport/GET without disclosing community, and per-device tuning supports slow responses and survives shared setup/restart', async () => {
+  const fixture = await snmpFixture(), storage = await tempStore(), service = new SnmpService(storage.store), relay = dgram.createSocket('udp4');
+  const { Ber } = createRequire(import.meta.url)('asn1-ber'); let requester: dgram.RemoteInfo | undefined; const repetitions: number[] = [], timers = new Set<NodeJS.Timeout>();
+  relay.on('message', (packet, remote) => {
+    if (remote.port === fixture.port) { if (!requester) return; const target = requester; const timer = setTimeout(() => { timers.delete(timer); relay.send(packet, target.port, target.address); }, 700); timers.add(timer); return; }
+    requester = remote;
+    const reader = new Ber.Reader(packet); reader.readSequence(); reader.readInt(); reader.readString();
+    if (reader.peek() === 165) { reader.readSequence(165); reader.readInt(); reader.readInt(); repetitions.push(reader.readInt()); }
+    relay.send(packet, fixture.port, '127.0.0.1');
+  });
+  await new Promise<void>(resolve => relay.bind(0, '127.0.0.1', resolve)); const port = (relay.address() as { port: number }).port;
+  try {
+    const p = profile(22); await storage.store.saveProfile({ profile: p });
+    await storage.store.saveSnmp({ profileId: p.id, port, readCommunity: 'fixture-read', timeoutMs: 500, retries: 0 });
+    await assert.rejects(service.interfaces(p.id), error => { const message = (error as Error).message; assert.match(message, /未收到设备响应.*UDP.*GET/); assert.ok(!message.includes('fixture-read')); return true; });
+    await storage.store.saveSnmp({ profileId: p.id, port, timeoutMs: 1500, retries: 1, maxRepetitions: 5 });
+    const data = await service.interfaces(p.id); assert.equal(data.interfaces[0].index, 101); assert.ok(repetitions.length > 0 && repetitions.every(n => n === 5));
+    await storage.store.saveSnmpBatch({ profileIds: [p.id], readCommunity: 'fixture-read' });
+    const restarted = new Store(storage.directory, storage.vault); await restarted.load(); const target = restarted.config().snmp![0];
+    assert.equal(target.timeoutMs, 1500); assert.equal(target.retries, 1); assert.equal(target.maxRepetitions, 5); assert.equal(target.port, port); assert.equal(fixture.writes.length, 0);
+  } finally { service.dispose(); for (const timer of timers) clearTimeout(timer); await new Promise<void>(resolve => relay.close(resolve)); await fixture.close(); await storage.cleanup(); }
 });
 test('SNMP communities survive restart encrypted, are never exposed in config and delete with profile', async () => {
   const storage = await tempStore();
@@ -35,6 +59,23 @@ test('SNMP communities survive restart encrypted, are never exposed in config an
     await restarted.deleteProfiles([p.id]); assert.deepEqual(restarted.config().snmp, []);
     assert.equal(Object.keys(JSON.parse(await fs.readFile(path.join(storage.directory, 'config.json'), 'utf8')).snmpCredentials).length, 0);
   } finally { await storage.cleanup(); }
+});
+
+test('SNMP GETBULK timeout retries a complete column at five rows and uses the smaller batch for subsequent columns', async () => {
+  const fixture = await snmpFixture(), storage = await tempStore(), service = new SnmpService(storage.store), relay = dgram.createSocket('udp4');
+  const { Ber } = createRequire(import.meta.url)('asn1-ber'); let requester: dgram.RemoteInfo | undefined; const batches: number[] = [];
+  relay.on('message', (packet, remote) => {
+    if (remote.port === fixture.port) { if (requester) relay.send(packet, requester.port, requester.address); return; }
+    requester = remote; const reader = new Ber.Reader(packet); reader.readSequence(); reader.readInt(); reader.readString();
+    if (reader.peek() === 165) { reader.readSequence(165); reader.readInt(); reader.readInt(); const batch = reader.readInt(); batches.push(batch); if (batch > 5) return; }
+    relay.send(packet, fixture.port, '127.0.0.1');
+  });
+  await new Promise<void>(resolve => relay.bind(0, '127.0.0.1', resolve));
+  try {
+    const p = profile(22); await storage.store.saveProfile({ profile: p }); await storage.store.saveSnmp({ profileId: p.id, port: (relay.address() as { port: number }).port, readCommunity: 'fixture-read', timeoutMs: 500, retries: 0 });
+    const data = await service.interfaces(p.id); assert.equal(data.interfaces.length, 1); assert.equal(data.interfaces[0].name, 'GE0/0/7');
+    assert.equal(batches[0], 30); assert.ok(batches.length > 2 && batches.slice(1).every(batch => batch === 5)); assert.equal(fixture.writes.length, 0);
+  } finally { service.dispose(); await new Promise<void>(resolve => relay.close(resolve)); await fixture.close(); await storage.cleanup(); }
 });
 test('real UDP SNMP v2c: interface reads, PVID bridge mapping, vendor settings, readback and MAC VLAN/port mapping', async () => {
   const fixture = await snmpFixture(), storage = await tempStore(), service = new SnmpService(storage.store);

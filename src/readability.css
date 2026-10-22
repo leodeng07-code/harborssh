@@ -285,3 +285,8 @@
 .mac-trunk-table { max-height:350px }
 
 .network-query-table tr[data-port-mode=trunk] { background:color-mix(in srgb,var(--accent-soft) 35%,transparent) }
+.network-retained-region { display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;gap:10px }
+.network-page-body[hidden],.network-retained-region[hidden],.network-ip-region[hidden] { display:none }
+.snmp-compat-settings { border:1px solid var(--border);border-radius:6px;padding:10px 12px }
+.snmp-compat-settings summary { cursor:pointer;color:var(--accent) }
+.snmp-compat-settings label { margin-top:12px;display:flex;flex-direction:column;gap:7px }
