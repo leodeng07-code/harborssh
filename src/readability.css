@@ -79,14 +79,34 @@
 .terminal-log.error { color:var(--rose) }
 .terminal-bottom>span.terminal-log { display:inline-flex }
 @media(max-height:800px) {
-  .excel-promo { display:none }
   .sidebar-bottom { padding-top:0 }
   .workspace-picker { padding-bottom:14px }
   .sidebar-search { margin-bottom:14px }
   .sidebar-section { margin-bottom:14px }
   .sidebar .sidebar-section.groups { margin-bottom:8px }
-  .session-links { max-height:150px }
 }
+
+/* Give the group tree the remaining height; sessions scroll within their own list. */
+.sidebar { overflow:hidden;padding-top:16px }
+.sidebar>.workspace-picker,.sidebar>.sidebar-search,.sidebar>.sidebar-section:not(.groups),.sidebar>.sidebar-bottom { flex-shrink:0 }
+.sidebar .workspace-picker { padding-bottom:14px }
+.sidebar .workspace-picker strong { margin:0;white-space:nowrap }
+.sidebar .sidebar-search { margin-bottom:16px }
+.sidebar>.sidebar-section { margin-bottom:14px }
+.sidebar .connection-links .sidebar-item { padding-block:7px }
+.sidebar .sidebar-section.groups { margin-bottom:10px }
+.sidebar .session-links { display:flex;flex-direction:column;max-height:none;overflow:hidden;margin-bottom:8px }
+.session-links>.section-label { flex-shrink:0 }
+.sidebar-session-list { min-height:0;max-height:clamp(68px,14dvh,130px);overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable }
+.sidebar .session-link { min-width:0;min-height:34px;padding:6px 11px;gap:9px;margin-bottom:2px }
+.sidebar .session-link>span.session-name { flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;overflow-wrap:normal;margin:0;font:inherit;color:inherit }
+.sidebar .sidebar-bottom { margin-top:0;padding-top:0 }
+.sidebar-import { display:flex;align-items:center;gap:9px;width:100%;min-height:38px;padding:8px 12px;border:1px solid var(--accent-border);border-radius:6px;background:var(--accent-soft);color:var(--accent);font-size:.9231rem;text-align:left }
+.sidebar-import>svg { flex-shrink:0 }
+.sidebar-import>span { flex:1 }
+.sidebar-import:hover:not(:disabled) { background:var(--raised) }
+.sidebar-import:disabled { opacity:.6;cursor:wait }
+.sidebar .sidebar-foot { height:34px;font-size:.8rem }
 
 /* File controls may scroll in short windows; keep both files and transfers visible. */
 .sftp-controls { flex:0 1 auto;min-height:40px;max-height:45%;overflow:auto hidden;overflow-y:auto;overflow-x:hidden }
@@ -244,3 +264,24 @@
 .network-help-note { flex-shrink:0;border-top:1px solid var(--border);color:var(--muted);font-size:.88rem;line-height:1.8 }
 .network-help-note summary { cursor:pointer;color:var(--accent) }
 .network-help-note p { max-height:90px;overflow:auto;margin-top:5px }
+
+/* MAC link modes: only confirmed Trunk learning rows are collapsed. */
+.port-mode-info { display:block;margin-top:5px;max-width:250px;white-space:normal }
+.port-mode-badge { display:inline-block;border:1px solid var(--border);border-radius:4px;padding:1px 7px;color:var(--muted);background:var(--inset);font-size:.86rem;font-weight:600;white-space:nowrap }
+.port-mode-badge.access { color:var(--accent);border-color:var(--accent-border);background:var(--accent-soft) }
+.port-mode-badge.trunk { color:var(--amber);border-color:var(--warning-border);background:var(--warning-bg) }
+.port-mode-badge.hybrid,.port-mode-badge.other { color:var(--text) }
+.port-mode-reason { white-space:normal;overflow-wrap:anywhere;line-height:1.6 }
+.trunk-toggle { display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:10px 14px;color:var(--accent);background:var(--inset);border-block:1px solid var(--border);font-size:.93rem;line-height:1.6;flex-shrink:0 }
+.trunk-toggle>span { margin-left:auto;font-size:.86rem;white-space:nowrap }
+.network-result-table { display:flex;flex-direction:column;flex:1;min-height:70px;overflow:hidden }
+.network-trunk-results { display:flex;flex-direction:column;flex-shrink:0;min-height:0;overflow:hidden }
+.network-fold-hint { flex-shrink:0;padding:10px 14px;color:var(--muted);font-size:.9rem;line-height:1.7 }
+.mac-visible-results,.mac-trunk-table { overflow:auto }
+.mac-match-table { min-width:750px }
+.mac-match-table td { vertical-align:top }
+.mac-match-table .port-mode-info { min-width:100px }
+.mac-trunk-results { margin-top:10px }
+.mac-trunk-table { max-height:350px }
+
+.network-query-table tr[data-port-mode=trunk] { background:color-mix(in srgb,var(--accent-soft) 35%,transparent) }

@@ -76,8 +76,13 @@ try {
   await modal.getByLabel('接口参数新值', { exact: true }).selectOption('1000'); await modal.getByRole('button', { name: '核对并提交' }).click(); await modal.waitFor({ state: 'hidden' }); await page.getByRole('tabpanel', { name: '设备接口', exact: true }).getByText('GE0/0/7', { exact: true }).waitFor();
   await page.getByRole('button', { name: '修改', exact: true }).click(); await modal.getByLabel('接口修改参数').selectOption('pvid');
   await modal.getByLabel('接口参数新值').fill('30'); await modal.getByRole('button', { name: '核对并提交' }).click(); await modal.waitFor({ state: 'hidden' }); await page.locator('.interface-table td', { hasText: /^30/ }).waitFor();
+  await page.getByRole('button', { name: '修改', exact: true }).click(); await modal.getByLabel('接口修改参数').selectOption('vlanMode');
+  await modal.getByLabel('接口参数新值', { exact: true }).selectOption('2'); await modal.getByRole('button', { name: '核对并提交' }).click(); await modal.waitFor({ state: 'hidden' }); await page.getByRole('tabpanel', { name: '设备接口', exact: true }).getByText('GE0/0/7', { exact: true }).waitFor();
   await page.getByRole('tab', { name: 'MAC 查端口', exact: true }).click();
   await page.getByLabel('查询 MAC 地址').fill('aabb.ccdd.eeff'); await page.getByRole('button', { name: '查询当前设备', exact: true }).click();
+  const trunkToggle = page.getByRole('button', { name: '展开或折叠 Trunk 学习结果', exact: true });
+  assert.equal(await trunkToggle.getAttribute('aria-expanded'), 'false'); assert.equal(await page.locator('.mac-results .mac-match-table tbody tr').count(), 0);
+  await trunkToggle.click();
   await page.locator('.mac-results').getByText('GE0/0/7', { exact: true }).waitFor();
   assert.match(await page.locator('.mac-results').innerText(), /动态学习/); assert.match(await page.locator('.mac-results').innerText(), /20/); assert.match(await page.locator('.mac-results').innerText(), /77/);
   await page.getByRole('tab', { name: 'LLDP 邻居', exact: true }).click();

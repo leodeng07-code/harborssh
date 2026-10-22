@@ -1,6 +1,6 @@
 {
   "name": "harborssh",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "private": true,
   "description": "Harbor SSH — Windows 批量 SSH 与隧道管理工具",
   "author": "Harbor SSH",
@@ -23,7 +23,9 @@
     "test:network": "tsx scripts/network-smoke.ts",
     "test:clipboard": "tsx scripts/clipboard-smoke.ts",
     "test:system": "tsx scripts/system-smoke.ts",
-    "test:network-query": "tsx scripts/network-query-smoke.ts"
+    "test:network-query": "tsx scripts/network-query-smoke.ts",
+    "test:mac-mode": "tsx scripts/mac-mode-smoke.ts",
+    "test:sidebar": "tsx scripts/sidebar-smoke.ts"
   },
   "dependencies": {
     "exceljs": "4.4.0",

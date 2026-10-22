@@ -27,7 +27,8 @@ export interface NetworkInterface { index: number; name: string; description: st
 export interface InterfaceSnapshot { profileId: string; host: string; name: string; objectId: string; description: string; interfaces: NetworkInterface[]; warnings: string[]; readAt: number }
 export interface InterfaceChange { profileId: string; index: number; field: 'adminStatus' | 'alias' | PortParameter; value: number | string; expected: number | string }
 export interface InterfaceChangeResult { verified: boolean; message: string }
-export interface MacMatch { bridgePort: number; ifIndex?: number; interfaceName: string; fdbId?: number; vlans: number[]; source: 'Q-BRIDGE' | 'BRIDGE'; entryStatus?: number }
+export interface PortModeInfo { kind: 'access' | 'trunk' | 'hybrid' | 'other' | 'unknown'; label: string; source?: string; oid?: string; value?: number | string; reason?: string }
+export interface MacMatch { bridgePort: number; ifIndex?: number; interfaceName: string; fdbId?: number; vlans: number[]; source: 'Q-BRIDGE' | 'BRIDGE'; entryStatus?: number; portMode?: PortModeInfo }
 export interface MacLookup { profileId: string; host: string; mac: string; matches: MacMatch[]; warnings: string[]; readAt: number; available?: boolean }
 export interface LldpNeighbor { key: string; timeMark: number; localPortNumber: number; remoteIndex: number; localPortId: string; localPortDescription: string; chassisId: string; portId: string; portDescription: string; systemName: string; systemDescription: string; managementAddresses: string[]; supportedCapabilities: string[]; enabledCapabilities: string[] }
 export interface LldpSnapshot { profileId: string; host: string; localName: string; available: boolean; neighbors: LldpNeighbor[]; warnings: string[]; readAt: number }
@@ -38,6 +39,7 @@ export interface NetworkQueryRow {
   ifIndex?: number; interfaceName: string; ip?: string; prefixLength?: number; mask?: string; mac?: string;
   nextHop?: string; protocol?: string; metric?: number; type?: string; state?: string;
   adminStatus?: number; operStatus?: number; description?: string; policy?: string; vlans?: number[];
+  portMode?: PortModeInfo;
 }
 export interface NetworkQueryData { rows: NetworkQueryRow[]; warnings: string[]; available: boolean; readAt: number }
 export interface NetworkQueryDevice {

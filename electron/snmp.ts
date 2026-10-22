@@ -6,6 +6,7 @@ import { Store } from './store';
 import { interfaceChangeSchema } from './validation';
 import { LLDP_OIDS, parseLldp } from './lldp';
 import { readIpQuery } from './network-reader';
+import { modeKey, readPortModes } from './port-mode';
 import type { NetworkQueryData, NetworkQueryKind } from '../shared/types';
 
 export const OIDS = {
@@ -169,7 +170,7 @@ export class SnmpService {
     const mac = normalizeMac(input), suffix = mac.split(':').map(v => parseInt(v, 16)).join('.');
     return this.use(id, false, async reader => {
       const warnings: string[] = [], matches: MacMatch[] = [];
-      await reader.get([OIDS.sysName]);
+      const identity = await reader.get([OIDS.sysName, OIDS.objectId]);
       const qRows = await this.column(reader, OIDS.qFdbPort, 'Q-BRIDGE MAC 表', warnings);
       const classic = await this.column(reader, OIDS.fdbPort, 'BRIDGE MAC 表', warnings);
       signal?.throwIfAborted();
@@ -196,6 +197,10 @@ export class SnmpService {
         } catch { warnings.push(`桥端口 ${bridgePort} 的接口映射读取失败`); }
         matches.push({ bridgePort, ifIndex, interfaceName, fdbId, vlans, source, entryStatus });
       }
+      const modes = await readPortModes(reader, matches, text(identity.find(value => value.oid === OIDS.objectId)), this.definitions(id).find(definition => definition.field === 'vlanMode'), signal);
+      for (const match of matches) match.portMode = modes.get(modeKey(match));
+      const unknownModes = matches.filter(match => !match.portMode || match.portMode.kind === 'unknown').length;
+      if (unknownModes) warnings.push(`${unknownModes} 条 MAC 学习结果未确认端口类型，均保持展开；请检查设备支持、SNMP 视图或 VLAN 模式适配`);
       return { profileId: id, host: this.store.profile(id).host, mac, matches, warnings, readAt: Date.now(), available: !!(qRows.length || classic.length) };
     }, signal);
   }
@@ -205,7 +210,7 @@ export class SnmpService {
     const fdb = async (): Promise<NetworkQueryData> => {
       const result = await this.mac(id, query, signal);
       return { available: !!result.available, readAt: result.readAt, warnings: result.warnings,
-        rows: result.matches.map((row, index) => ({ key: `mac:${index}`, kind: 'mac', source: row.source, mac: result.mac, interfaceName: row.interfaceName, ifIndex: row.ifIndex, vlans: row.vlans, description: `桥端口 ${row.bridgePort}${row.fdbId === undefined ? '' : ` · FDB ${row.fdbId}`}` })) };
+        rows: result.matches.map((row, index) => ({ key: `mac:${index}`, kind: 'mac', source: row.source, mac: result.mac, interfaceName: row.interfaceName, ifIndex: row.ifIndex, vlans: row.vlans, portMode: row.portMode, description: `桥端口 ${row.bridgePort}${row.fdbId === undefined ? '' : ` · FDB ${row.fdbId}`}` })) };
     };
     if (kind === 'mac') return fdb();
     const parts = await Promise.allSettled([this.use(id, false, reader => readIpQuery(reader, 'arp', query, signal), signal), fdb()]);

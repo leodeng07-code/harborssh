@@ -7,7 +7,7 @@ export const testMappings: ParameterDefinition[] = [
   { field: 'duplex', oid: '1.3.6.1.4.1.8072.9999.1.2', index: 'ifIndex', type: 'Integer', choices: [{ label: '自动', value: 0 }, { label: '全双工', value: 1 }] },
   { field: 'vlanMode', oid: '1.3.6.1.4.1.8072.9999.1.3', index: 'ifIndex', type: 'Integer', choices: [{ label: 'Access', value: 1 }, { label: 'Trunk', value: 2 }] },
 ];
-export async function snmpFixture(options: { lldp?: 'neighbors' | 'empty' | 'unavailable'; ipTables?: 'legacy' | 'cidr' | 'modern' | 'empty' | 'unavailable' } = {}) {
+export async function snmpFixture(options: { lldp?: 'neighbors' | 'empty' | 'unavailable'; ipTables?: 'legacy' | 'cidr' | 'modern' | 'empty' | 'unavailable'; portMode?: 'h3c' | 'huawei'; modeValue?: number; activeMode?: number; portModeIndex?: number } = {}) {
   const socket = dgram.createSocket('udp4'); await new Promise<void>(r => socket.bind(0, '127.0.0.1', r));
   const port = socket.address().port; await new Promise<void>(r => socket.close(r));
   const agent = snmp.createAgent({ port, address: '127.0.0.1', accessControlModelType: snmp.AccessControlModelType.Simple }, () => {});
@@ -20,13 +20,15 @@ export async function snmpFixture(options: { lldp?: 'neighbors' | 'empty' | 'una
     for (const row of rows) mib.addTableRow(name, row);
   };
   const I = snmp.ObjectType.Integer, S = snmp.ObjectType.OctetString;
-  scalar('systemName', '1.3.6.1.2.1.1.5', S, '测试交换机'); scalar('systemDescription', '1.3.6.1.2.1.1.1', S, 'Local SNMP integration fixture'); scalar('systemObject', '1.3.6.1.2.1.1.2', snmp.ObjectType.OID, '1.3.6.1.4.1.8072.3.2.10');
+  scalar('systemName', '1.3.6.1.2.1.1.5', S, '测试交换机'); scalar('systemDescription', '1.3.6.1.2.1.1.1', S, 'Local SNMP integration fixture'); scalar('systemObject', '1.3.6.1.2.1.1.2', snmp.ObjectType.OID, options.portMode === 'h3c' ? '1.3.6.1.4.1.25506.11.1.1' : options.portMode === 'huawei' ? '1.3.6.1.4.1.2011.2.23.1' : '1.3.6.1.4.1.8072.3.2.10');
   table('interfaces', '1.3.6.1.2.1.2.2.1', [{ number: 1, name: 'ifIndex', type: I }, { number: 2, name: 'ifDescr', type: S }, { number: 5, name: 'ifSpeed', type: snmp.ObjectType.Gauge }, { number: 6, name: 'ifMac', type: S }, { number: 7, name: 'ifAdmin', type: I, writable: true }, { number: 8, name: 'ifOper', type: I }], ['ifIndex'], [[101, 'GigabitEthernet0/0/7', 1_000_000_000, Buffer.from('001122334455', 'hex'), 1, 1]]);
   table('extended', '1.3.6.1.2.1.31.1.1.1', [{ number: 1, name: 'ifName', type: S }, { number: 15, name: 'ifHighSpeed', type: snmp.ObjectType.Gauge }, { number: 18, name: 'ifAlias', type: S, writable: true }, { number: 99, name: 'xIndex', type: I }], ['xIndex'], [['GE0/0/7', 1000, '办公区', 101]]);
   table('bridge', '1.3.6.1.2.1.17.1.4.1', [{ number: 1, name: 'bridgeIndex', type: I }, { number: 2, name: 'bridgeIf', type: I }], ['bridgeIndex'], [[7, 101]]);
   table('pvid', '1.3.6.1.2.1.17.7.1.4.5.1', [{ number: 1, name: 'portPvid', type: snmp.ObjectType.Gauge, writable: true }, { number: 99, name: 'pvidIndex', type: I }], ['pvidIndex'], [[20, 7]]);
   table('duplex', '1.3.6.1.2.1.10.7.2.1', [{ number: 19, name: 'duplexStatus', type: I }, { number: 99, name: 'duplexIndex', type: I }], ['duplexIndex'], [[3, 101]]);
   table('vendor', '1.3.6.1.4.1.8072.9999.1', [{ number: 1, name: 'vendorSpeed', type: I, writable: true }, { number: 2, name: 'vendorDuplex', type: I, writable: true }, { number: 3, name: 'vendorMode', type: I, writable: true }, { number: 99, name: 'vendorIndex', type: I }], ['vendorIndex'], [[0, 0, 1, 101]]);
+  if (options.portMode === 'h3c') table('h3cPortMode', '1.3.6.1.4.1.25506.8.35.1.1.1', [{ number: 5, name: 'h3cVlanType', type: I }, { number: 10, name: 'h3cBasePort', type: I }, { number: 99, name: 'h3cModeIndex', type: I }], ['h3cModeIndex'], [[options.modeValue ?? 1, 7, options.portModeIndex ?? 909]]);
+  if (options.portMode === 'huawei') table('huaweiPortMode', '1.3.6.1.4.1.2011.5.25.42.1.1.1.3.1', [{ number: 2, name: 'hwModeIfIndex', type: I }, { number: 3, name: 'hwConfiguredMode', type: I }, ...(options.activeMode === undefined ? [] : [{ number: 32, name: 'hwActiveMode', type: I }]), { number: 99, name: 'hwModeIndex', type: I }], ['hwModeIndex'], [[101, options.modeValue ?? 1, ...(options.activeMode === undefined ? [] : [options.activeMode]), options.portModeIndex ?? 55]]);
   // Deliberately different FDB ID 77, VLAN ID 20, bridge port 7 and ifIndex 101.
   const indexCols = Array.from({ length: 7 }, (_, i) => ({ number: 100 + i, name: `qIndex${i}`, type: I }));
   table('qFdb', '1.3.6.1.2.1.17.7.1.2.2.1', [{ number: 2, name: 'qPort', type: I }, { number: 3, name: 'qStatus', type: I }, ...indexCols], indexCols.map(c => c.name), [[7, 3, 77, 170, 187, 204, 221, 238, 255], [7, 2, 77, 18, 52, 86, 120, 154, 188]]);

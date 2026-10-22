@@ -6,8 +6,8 @@
 
 适用目标：Windows 10 / 11，x64。
 
-- 安装版：运行 `HarborSSH-0.6.0-setup-x64.exe`，按向导选择安装目录。
-- 免安装版：将 `HarborSSH-0.6.0-windows-x64.zip` **完整解压**到一个文件夹，再运行 `Harbor SSH.exe`。请保留所有 DLL、resources 和其他随附文件。
+- 安装版：运行 `HarborSSH-0.6.1-setup-x64.exe`，按向导选择安装目录。
+- 免安装版：将 `HarborSSH-0.6.1-windows-x64.zip` **完整解压**到一个文件夹，再运行 `Harbor SSH.exe`。请保留所有 DLL、resources 和其他随附文件。
 - 首次运行为空连接库，可以点击“新建连接”或“导入 Excel”。
 - 这是未签名的测试版。Windows 可能显示发布者验证提示；请先确认文件来源和随附 SHA256 校验值。
 
@@ -37,6 +37,8 @@ SSH 会话断开或连接失败后，聚焦终端按 R 可重新连接；连接�
 SSH 页直接显示终端标签及内容，打开连接移到顶部工具栏，省去大标题和介绍区。布布一二主题使用半透明选区与高对比文字，粘贴时移除旧选区。
 
 连接卡片和列表完整换行显示设备名称；默认界面基准字号 15px，常用辅助文字约 14px。在“偏好设置 → 界面字号”可选择 14、15、16 或 18px；与独立的终端字号设置分别保留，默认终端字号 16px。
+
+左侧栏优先将可用高度分配给主机分组，分组树可独立滚动。底部 Excel 导入缩成单行按钮；当前会话名以单行省略显示，鼠标悬停可查看完整名称，点击即可切换到对应终端。会话较多时在会话列表内滚动，不继续挤占分组区域。
 
 ## Linux 运行状态
 
@@ -138,6 +140,12 @@ SSH 能登录不代表 SFTP 已开放。交换机需启用 SFTP 服务、允许�
 
 “MAC 查端口”在**当前设备**查找 Q-BRIDGE 与 BRIDGE 转发表，按桥端口映射到 ifIndex/接口名称；Q-BRIDGE 的 FDB ID 通过 VLAN 表转换为 VLAN ID，二者不会直接混用。显示动态学习、静态管理等条目类型，过滤无效条目；不支持/访问失败与未命中会分别提示。结果可能为上联口或聚合口，仍需到下级设备继续查找，尚未自动跨设备追踪。条目可能因老化、设备未学习或 VLAN 视图限制而查不到。每次操作最多 45 秒，每张表最多 100000 条，超限明确提示结果不完整。
 
+MAC 学习结果现在显示端口类型：**Access 直接显示并优先排列，只有已确认的 Trunk 默认折叠**，点击“Trunk 学习结果”可展开 / 收起。Hybrid、其他类型和未知类型保持显示；折叠条目仍计入总命中数，只有 Trunk 命中时会明确提示展开，不会显示成未命中。此规则同时用于单台 MAC 查端口及全网 MAC / 智能 MAC 查询；智能查询中的 ARP 记录不随 Trunk 学习结果折叠。全网结果统一分页，展开时自动定位 Trunk 记录，收起时回到首屏，自动刷新会保留当前展开选择，重新读取时重新识别模式，不沿用旧模式结果。
+
+端口类型从只读 SNMP 值确认：优先使用当前设备已配置的 VLAN 模式 MIB 映射，其显示名称需明确为 `Access`、`Trunk` 或 `Hybrid`（也支持明确的接入 / 中继 / 混合中文名称）；不同厂商的枚举值不能混用。未配置自定义映射时，尝试 H3C 的 `hh3cifVLANType` 并通过基端口列核对学习口，或通过华为的二层端口到 ifIndex 映射读取模式，优先采用华为的生效模式。识别依据、读取 OID 和原值可在类型标记提示中查看。表未开放、索引映射不唯一、枚举无效或厂商未适配时显示未知及原因，保留完整结果；不会根据 PVID、接口名称或 VLAN 数量推断 Access / Trunk。**Access 类型也不能单独证明是终端最终接入口**，仍可能连接其他设备；应结合 LLDP 继续定位。该查询不发送 SNMP SET。
+
+厂商定义参考：[H3C HH3C-LswINF-MIB](https://www.h3c.com/en/d_202504/2411687_294551_0.htm)、[华为 HUAWEI-L2IF-MIB](https://info.support.huawei.com/enterprise/zh/doc/EDOC1100276977/c672b196)。
+
 标准参考：[IF-MIB（RFC 2863）](https://www.rfc-editor.org/rfc/rfc2863.html)、[BRIDGE-MIB（RFC 4188）](https://www.rfc-editor.org/rfc/rfc4188.html)、[Q-BRIDGE-MIB（RFC 4363）](https://www.rfc-editor.org/rfc/rfc4363.html)。
 
 ### 统一团体名、ARP / 路由 / IP 接口与全网查询
@@ -230,6 +238,8 @@ npm test             # SSH / 隧道 / 配置 / Excel / 分组集成检查
 npm run build        # 生产前端与 Electron 代码
 npm run test:ui      # Electron 界面冒烟检查，需要图形桌面
 npm run test:sftp    # SFTP 真协议、终端并行、上传下载、目录操作、取消和布局
+npm run test:mac-mode # MAC 端口类型、Trunk 折叠、未知/Hybrid 保留、刷新及小窗口
+npm run test:sidebar # 多 SSH 会话、独立滚动、会话切换、导入按钮及大字号小窗口
 npm run test:network-query # ARP / 路由 / IP 接口、统一凭据、全网 IP/MAC、30 秒刷新与取消
 npm run test:network # 本机 SNMP v2c / Electron：凭据、接口、MIB 适配、SET 回读、MAC 与批量状态
 npm run test:security # 软件密码、退出重开、主题、凭据恢复及批量删除

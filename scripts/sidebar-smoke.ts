@@ -1,0 +1,63 @@
+import { _electron as electron } from 'playwright';
+import { promises as fs } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+import { profile, sshFixture } from '../tests/helpers';
+import { poll } from './poll.mjs';
+
+const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'harborssh-sidebar-'));
+const fixture = await sshFixture();
+const profiles = Array.from({ length: 12 }, (_, i) => profile(fixture.port, { name: `WH_S1730_ACC_${i}_车间弱电箱_完整名称_长会话布局验证`, groupPath: ['交换机', `${i + 1}车间`, '生产网'] }));
+const env = { ...process.env, DISPLAY: process.env.DISPLAY || ':0', HARBOR_TEST_DATA: directory }; delete env.ELECTRON_RUN_AS_NODE;
+let app: Awaited<ReturnType<typeof electron.launch>> | undefined;
+try {
+  app = await electron.launch({ args: [process.env.HARBOR_SMOKE_APP || '.', '--no-sandbox', '--ozone-platform=x11'], env, timeout: 20000 });
+  await app.evaluate(({ dialog }) => { dialog.showMessageBox = async () => ({ response: 1, checkboxChecked: false }); });
+  const page = await app.firstWindow(); page.setDefaultTimeout(15000);
+  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+  await page.getByLabel('软件密码', { exact: true }).fill('sidebar-smoke-password'); await page.getByLabel('确认软件密码', { exact: true }).fill('sidebar-smoke-password');
+  await page.getByRole('button', { name: '设置密码并进入' }).click(); await page.getByRole('heading', { name: '连接管理', exact: true }).waitFor();
+  await page.evaluate(async profiles => { for (const profile of profiles) await window.harbor!.saveProfile({ profile, secrets: { password: 'test-secret' } }); }, profiles);
+  await page.reload();
+  await page.evaluate(async ids => { for (const id of ids) await window.harbor!.connect(id); }, profiles.slice(0, 3).map(p => p.id));
+  await poll(page, async () => (await window.harbor!.initial()).runtime.sessions.filter(s => s.status === 'connected').length === 3);
+  const sidebar = page.locator('.sidebar'), groups = sidebar.getByRole('navigation', { name: '分级主机分组', exact: true }), sessions = sidebar.getByRole('region', { name: '当前会话列表', exact: true });
+  await sidebar.getByRole('button', { name: `切换到会话 ${profiles[1].name}`, exact: true }).click();
+  assert.equal(await page.locator('main').getAttribute('aria-label'), 'SSH 终端');
+  assert.equal(await sidebar.locator('.session-link.active').getAttribute('title'), profiles[1].name);
+  await page.setViewportSize({ width: 1040, height: 700 });
+  await page.getByRole('button', { name: '偏好设置', exact: true }).click(); await page.getByLabel('界面字号', { exact: true }).selectOption('18'); await page.locator('.theme-option').filter({ hasText: '布布一二' }).click();
+  const inspectLayout = async () => {
+    const groupBox = (await groups.boundingBox())!, importBox = (await sidebar.locator('.sidebar-import').boundingBox())!;
+    assert.ok(groupBox.height >= 170, `Group viewport too short: ${JSON.stringify(groupBox)}`);
+    assert.ok(importBox.height <= 44 && importBox.y + importBox.height <= 700, JSON.stringify(importBox));
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+    assert.equal(await sidebar.evaluate(el => el.scrollHeight > el.clientHeight), false);
+    const name = sidebar.locator('.session-name').first();
+    assert.deepEqual(await name.evaluate(el => { const style = getComputedStyle(el); return { wrap: style.whiteSpace, overflow: style.textOverflow, truncated: el.scrollWidth > el.clientWidth }; }), { wrap: 'nowrap', overflow: 'ellipsis', truncated: true });
+    const row = (await sidebar.locator('.session-link').first().boundingBox())!; assert.ok(row.height <= 42, JSON.stringify(row));
+    return groupBox.height;
+  };
+  const threeSessionGroupHeight = await inspectLayout();
+  await fs.mkdir('test-results', { recursive: true }); await page.screenshot({ path: 'test-results/44-sidebar-compact-bubu.png' });
+  await page.evaluate(async ids => { for (const id of ids) await window.harbor!.connect(id); }, profiles.slice(3, 8).map(p => p.id));
+  await poll(page, async () => (await window.harbor!.initial()).runtime.sessions.filter(s => s.status === 'connected').length === 8);
+  const eightSessionGroupHeight = await inspectLayout(); assert.ok(threeSessionGroupHeight - eightSessionGroupHeight < 20);
+  assert.equal(await sessions.evaluate(el => el.scrollHeight > el.clientHeight), true); assert.equal(await groups.evaluate(el => el.scrollHeight > el.clientHeight), true);
+  const groupScroll = await groups.evaluate(el => { el.scrollTop = 48; return el.scrollTop; }); assert.ok(groupScroll > 0);
+  await sessions.getByRole('button', { name: `切换到会话 ${profiles[7].name}`, exact: true }).click();
+  assert.equal(await groups.evaluate(el => el.scrollTop), groupScroll); assert.equal(await sidebar.locator('.session-link.active').getAttribute('title'), profiles[7].name);
+  assert.equal(await page.locator('.terminal-tab.active').getByRole('button').first().innerText(), profiles[7].name);
+  await app.evaluate(({ dialog }) => { (globalThis as any).__sidebarImportCalls = 0; dialog.showOpenDialog = async () => { (globalThis as any).__sidebarImportCalls++; return { canceled: true, filePaths: [] }; }; });
+  await sidebar.getByRole('button', { name: '导入 Excel', exact: true }).click();
+  await poll(page, () => !document.querySelector<HTMLButtonElement>('.sidebar-import')!.disabled);
+  assert.equal(await app.evaluate(() => (globalThis as any).__sidebarImportCalls), 1);
+  assert.equal((await page.evaluate(() => window.harbor!.initial())).config.profiles.length, 12);
+  await page.screenshot({ path: 'test-results/45-sidebar-many-sessions.png' });
+  await page.setViewportSize({ width: 1440, height: 940 });
+  assert.ok(((await groups.boundingBox())!).height >= 350);
+  assert.deepEqual(errors, []);
+  console.log(`Sidebar desktop verified: 3→8 real SSH sessions, single-line ellipsis with full-name tooltips, active-session navigation, independent group/session scrolling, compact native Excel picker, 18px Bubu at 1040×700 and 1440×940; group viewport ${Math.round(threeSessionGroupHeight)}→${Math.round(eightSessionGroupHeight)}px.`);
+} catch (error) { if (app) await (await app.firstWindow()).screenshot({ path: 'test-results/46-sidebar-failure.png' }).catch(() => {}); throw error; }
+finally { if (app) await app.close(); await fixture.close(); await fs.rm(directory, { recursive: true, force: true }); }
