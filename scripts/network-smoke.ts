@@ -110,7 +110,7 @@ try {
   assert.ok((await page.getByLabel('当前网络管理目标', { exact: true }).innerText()).includes(p.name));
   await page.getByRole('button', { name: '偏好设置', exact: true }).click();
   await page.getByRole('combobox', { name: '界面字号', exact: true }).selectOption('18');
-  await page.locator('.theme-option').filter({ hasText: '布布一二' }).click();
+  await page.getByRole('button', { name: '布布一二', exact: true }).click();
   await page.getByRole('button', { name: '网络管理', exact: true }).click();
   await page.getByRole('tab', { name: 'LLDP 邻居', exact: true }).click();
   await page.getByRole('button', { name: '查询 LLDP', exact: true }).click();

@@ -46,7 +46,7 @@
 .terminal-tab { max-width:320px;height:44px }
 .terminal-tabs { height:44px;min-height:44px }
 .terminal-search { top:46px }
-.theme-picker { grid-template-columns:repeat(auto-fit,minmax(150px,1fr)) }
+.theme-picker { grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr)) }
 .theme-option small { padding-right:8px;line-height:1.7 }
 .network-toolbar { gap:12px;align-items:flex-start }
 .network-toolbar select { max-width:min(480px,100%);width:100% }
@@ -153,8 +153,8 @@
 .network-protocol { flex-shrink:0;padding-top:35px;font-size:.87rem }
 /* xterm's DOM renderer otherwise blends selection against a transparent
    terminal background; use an explicit translucent overlay for the wallpaper. */
-[data-theme=bubu-yier] .xterm .xterm-selection div { background-color:rgba(181,119,76,.28)!important }
-[data-theme=bubu-yier] .xterm:not(.focus) .xterm-selection div { background-color:rgba(181,119,76,.16)!important }
+[data-wallpaper=true] .xterm .xterm-selection div { background-color:var(--terminal-selection)!important }
+[data-wallpaper=true] .xterm:not(.focus) .xterm-selection div { background-color:var(--terminal-selection-inactive)!important }
 @media(max-width:1250px) {
   .view-terminal .topbar .privacy-label { display:none }
   .network-protocol { display:none }

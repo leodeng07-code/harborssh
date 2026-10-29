@@ -36,7 +36,7 @@ try {
     assert.equal(await toggle.getAttribute('aria-expanded'), 'true'); assert.equal(await global.locator('.network-query-table tr[data-port-mode=trunk] .port-mode-badge.trunk').count(), 1);
   }
   await global.getByLabel('网络查询自动刷新', { exact: true }).selectOption('0');
-  await page.setViewportSize({ width: 1040, height: 740 }); await page.getByRole('button', { name: '偏好设置', exact: true }).click(); await page.getByRole('combobox', { name: '界面字号', exact: true }).selectOption('18'); await page.locator('.theme-option').filter({ hasText: '布布一二' }).click();
+  await page.setViewportSize({ width: 1040, height: 740 }); await page.getByRole('button', { name: '偏好设置', exact: true }).click(); await page.getByRole('combobox', { name: '界面字号', exact: true }).selectOption('18'); await page.getByRole('button', { name: '布布一二', exact: true }).click();
   await page.getByRole('button', { name: '网络管理', exact: true }).click(); await page.getByRole('button', { name: '全网查询', exact: true }).click(); await global.getByLabel('全网查询类型', { exact: true }).selectOption('mac'); await input.fill('AA-BB-CC-DD-EE-FF'); await global.getByRole('button', { name: '查询全网', exact: true }).click(); await until(async () => (await global.locator('.network-query-progress').innerText()).includes('本轮完成'));
   assert.equal(await toggle.getAttribute('aria-expanded'), 'false'); await toggle.click();
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);

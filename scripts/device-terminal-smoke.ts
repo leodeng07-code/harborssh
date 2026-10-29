@@ -79,7 +79,7 @@ try {
   const toast = page.locator('.toast.error'); await toast.waitFor(); assert.match(await toast.innerText(), /Break.*驱动/); await toast.locator('button').click();
   await page.locator('.terminal-pane.visible .terminal-container').click(); await page.keyboard.insertText('after-break'); await page.keyboard.press('Enter'); await until(() => serialInput.includes('after-break'));
   await page.screenshot({ path: 'test-results/63-live-serial.png' });
-  await page.getByRole('button', { name: '偏好设置', exact: true }).click(); await page.locator('.theme-option').filter({ hasText: '布布一二' }).click();
+  await page.getByRole('button', { name: '偏好设置', exact: true }).click(); await page.getByRole('button', { name: '布布一二', exact: true }).click();
   await page.getByRole('button', { name: '终端', exact: true }).click(); await page.screenshot({ path: 'test-results/64-console-bubu-small.png' });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
   await page.getByRole('button', { name: '关闭会话 串口 Console 测试', exact: true }).click();

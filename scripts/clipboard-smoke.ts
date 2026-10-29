@@ -50,7 +50,7 @@ try {
   await page.getByRole('button', { name: '偏好设置', exact: true }).click();
   assert.equal(await page.getByRole('combobox', { name: '终端字号', exact: true }).inputValue(), '16');
   await page.getByRole('combobox', { name: '界面字号', exact: true }).selectOption('18');
-  await page.locator('.theme-option').filter({ hasText: '布布一二' }).click();
+  await page.getByRole('button', { name: '布布一二', exact: true }).click();
   await page.getByRole('button', { name: '连接管理', exact: true }).click();
   await page.setViewportSize({ width: 1040, height: 700 }); await checkNames(page);
   await page.getByRole('button', { name: '列表视图', exact: true }).click(); await checkNames(page);

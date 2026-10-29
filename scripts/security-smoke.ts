@@ -38,7 +38,7 @@ try {
   const terminalBg = await page.locator('.terminal-pane.visible .xterm-scrollable-element').evaluate(el => getComputedStyle(el).backgroundColor); assert.equal(terminalBg, 'rgb(255, 255, 255)');
   await page.screenshot({ path: 'test-results/16-terminal-light.png' });
   await page.getByRole('button', { name: '偏好设置', exact: true }).click();
-  await page.locator('.theme-option').filter({ hasText: '布布一二' }).click();
+  await page.getByRole('button', { name: '布布一二', exact: true }).click();
   assert.equal(await page.locator('html').getAttribute('data-theme'), 'bubu-yier');
   const strength = page.getByRole('slider', { name: /背景显示强度/ });
   assert.equal(await strength.inputValue(), '14');
@@ -103,7 +103,7 @@ try {
   await page.getByRole('heading', { name: '连接管理', exact: true }).waitFor();
   assert.equal((await page.evaluate(() => window.harbor!.initial())).config.profiles[0].hasSecret, true);
   assert.deepEqual(errors, []);
-  console.log('Security UI passed: lock, password recovery, seven themes, offline official wallpaper, adjustable opacity and restart persistence, transparent live terminal, password change, credential recovery and confirmed bulk deletion.');
+  console.log('Security UI passed: lock, password recovery, classic and original Bubu themes, offline official wallpaper, adjustable opacity and restart persistence, transparent live terminal, password change, credential recovery and confirmed bulk deletion.');
 } catch (error) {
   console.error('Renderer errors:', errors);
   if (app) { const page = await app.firstWindow(); await page.screenshot({ path: 'test-results/security-failure.png' }); console.error((await page.locator('body').innerText()).slice(0, 4000)); }

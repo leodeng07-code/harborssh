@@ -46,7 +46,7 @@ try {
   await panel.getByRole('button', { name: '收起运行状态', exact: true }).click(); await delay(300); const collapsed = fixture.execCommands.length; await delay(5200); assert.equal(fixture.execCommands.length, collapsed);
   await page.getByRole('button', { name: 'Linux 运行状态', exact: true }).click(); await panel.getByText('fixture-linux', { exact: true }).waitFor();
   await page.getByRole('button', { name: '偏好设置', exact: true }).click(); await delay(300); const hidden = fixture.execCommands.length; await delay(5200); assert.equal(fixture.execCommands.length, hidden);
-  await page.getByRole('combobox', { name: '界面字号', exact: true }).selectOption('18'); await page.locator('.theme-option').filter({ hasText: '布布一二' }).click();
+  await page.getByRole('combobox', { name: '界面字号', exact: true }).selectOption('18'); await page.getByRole('button', { name: '布布一二', exact: true }).click();
   await page.getByRole('button', { name: '终端', exact: true }).click(); await page.setViewportSize({ width: 1040, height: 700 }); await panel.getByText('fixture-linux', { exact: true }).waitFor();
   const box = (await page.locator('.terminal-pane.visible .terminal-console').boundingBox())!; assert.ok(box.width >= 350, JSON.stringify(box));
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);

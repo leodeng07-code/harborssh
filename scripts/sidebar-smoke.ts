@@ -27,7 +27,7 @@ try {
   assert.equal(await page.locator('main').getAttribute('aria-label'), '终端');
   assert.equal(await sidebar.locator('.session-link.active').getAttribute('title'), profiles[1].name);
   await page.setViewportSize({ width: 1040, height: 700 });
-  await page.getByRole('button', { name: '偏好设置', exact: true }).click(); await page.getByLabel('界面字号', { exact: true }).selectOption('18'); await page.locator('.theme-option').filter({ hasText: '布布一二' }).click();
+  await page.getByRole('button', { name: '偏好设置', exact: true }).click(); await page.getByLabel('界面字号', { exact: true }).selectOption('18'); await page.getByRole('button', { name: '布布一二', exact: true }).click();
   const inspectLayout = async () => {
     const groupBox = (await groups.boundingBox())!, importBox = (await sidebar.locator('.sidebar-import').boundingBox())!;
     assert.ok(groupBox.height >= 170, `Group viewport too short: ${JSON.stringify(groupBox)}`);

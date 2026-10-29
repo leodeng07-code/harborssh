@@ -94,7 +94,7 @@ try {
   assert.equal(await global.locator('.network-query-table').innerText(), cachedTable);
 
   await page.setViewportSize({ width: 1040, height: 740 });
-  await page.getByRole('button', { name: '偏好设置', exact: true }).click(); await page.getByRole('combobox', { name: '界面字号', exact: true }).selectOption('18'); await page.locator('.theme-option').filter({ hasText: '布布一二' }).click();
+  await page.getByRole('button', { name: '偏好设置', exact: true }).click(); await page.getByRole('combobox', { name: '界面字号', exact: true }).selectOption('18'); await page.getByRole('button', { name: '布布一二', exact: true }).click();
   await page.getByRole('button', { name: '网络管理', exact: true }).click(); await page.getByRole('button', { name: '全网查询', exact: true }).click();
   await input.fill('192.0.2.99'); await global.getByRole('button', { name: '查询全网', exact: true }).click(); await poll(async () => (await global.locator('.network-query-progress').innerText()).includes('本轮完成'), 12000);
   await page.screenshot({ path: 'test-results/40-network-ip-bubu-small.png' });
