@@ -2,6 +2,8 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { DesktopAPI, AppEvent } from '../shared/types';
 
 const api: DesktopAPI = {
+  listSerialPorts: () => ipcRenderer.invoke('harbor:serial-list'),
+  sendBreak: id => ipcRenderer.invoke('harbor:terminal-break', id),
   lockStatus: () => ipcRenderer.invoke('harbor:lock-status'),
   setupPassword: password => ipcRenderer.invoke('harbor:password-setup', password),
   unlock: password => ipcRenderer.invoke('harbor:unlock', password),

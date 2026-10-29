@@ -11,6 +11,7 @@ import { batchSchema, idSchema, message, profileInputSchema, tunnelSchema, snmpC
 import { SnmpService } from './snmp';
 import { NetworkQueryService } from './network-query';
 import type { AppEvent, Profile } from '../shared/types';
+import { listSerialPorts } from './device-terminal';
 
 let win: BrowserWindow;
 let store: Store;
@@ -72,12 +73,14 @@ function registerIPC() {
     const ids = [...new Set(z.array(idSchema).min(1).max(2000).parse(raw))];
     ids.forEach(id => store.profile(id));
     manager.assertProfilesDeletable(ids);
-    for (const id of ids) await manager.closeProfile(id);
+    for (const id of ids) await manager.closeProfile(id, ids);
     return store.deleteProfiles(ids);
   });
   handle('harbor:tunnel-save', raw => { const t = tunnelSchema.parse(raw); if (manager.tunnelActive(t.id)) throw new Error('请先停止隧道再编辑'); return store.saveTunnel(t); });
   handle('harbor:tunnel-delete', async raw => { const id = idSchema.parse(raw); await manager.removeTunnel(id); return store.deleteTunnel(id); });
   handle('harbor:connect', id => manager.startSession(idSchema.parse(id)));
+  handle('harbor:serial-list', () => listSerialPorts());
+  handle('harbor:terminal-break', id => manager.sendBreak(idSchema.parse(id)));
   handle('harbor:disconnect', async raw => {
     const id = idSchema.parse(raw), count = manager.sftp.transfers(id).filter(t => ['queued', 'preparing', 'running'].includes(t.status)).length;
     if (count) {

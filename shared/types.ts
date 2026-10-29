@@ -1,8 +1,17 @@
 export type AuthType = 'password' | 'key' | 'agent';
+export type ConnectionProtocol = 'ssh' | 'telnet' | 'serial';
+export interface SerialSettings {
+  baudRate: number; dataBits: 5 | 6 | 7 | 8; stopBits: 1 | 2;
+  parity: 'none' | 'even' | 'odd' | 'mark' | 'space';
+  flowControl: 'none' | 'hardware' | 'software'; localEcho: boolean; enterKey: 'cr' | 'crlf';
+}
+export interface SerialPortInfo { path: string; manufacturer?: string; serialNumber?: string; friendlyName?: string }
 export interface Profile {
   id: string; name: string; host: string; port: number; username: string;
   group: string; groupPath?: string[]; authType: AuthType; privateKeyPath: string; agentPath: string;
   favorite: boolean; color: string; hasSecret: boolean; rememberSecret: boolean;
+  protocol?: ConnectionProtocol; encoding?: 'utf8' | 'gb18030'; serial?: SerialSettings;
+  telnetCredentialProfileId?: string;
 }
 export interface Secrets { password?: string; passphrase?: string }
 export interface ProfileInput { profile: Profile; secrets?: Secrets; clearSecret?: boolean }
@@ -12,7 +21,7 @@ export interface Tunnel {
 }
 export type RunStatus = 'connecting' | 'connected' | 'closed' | 'error';
 export interface TerminalLogInfo { status: 'recording' | 'saved' | 'error'; path: string; message?: string }
-export interface SessionInfo { id: string; profileId: string; name: string; status: RunStatus; message?: string; connectedAt?: number; log?: TerminalLogInfo }
+export interface SessionInfo { id: string; profileId: string; name: string; status: RunStatus; message?: string; connectedAt?: number; log?: TerminalLogInfo; protocol?: ConnectionProtocol; encoding?: 'utf8' | 'gb18030'; endpoint?: string }
 export interface TunnelInfo { id: string; status: 'starting' | 'running' | 'stopped' | 'error'; message?: string; startedAt?: number; connections: number }
 export interface BatchResult { profileId: string; name: string; status: 'queued' | 'running' | 'success' | 'unconfirmed' | 'error' | 'cancelled'; output: string; error?: string; warning?: string; exitCode?: number; duration?: number }
 export interface BatchJob { id: string; command: string; startedAt: number; status: 'running' | 'done' | 'cancelled'; results: BatchResult[] }
@@ -61,7 +70,7 @@ export interface SystemMemory { total: number; used: number; available: number; 
 export interface SystemDisk { device: string; mount: string; total: number; used: number; available: number; percent: number }
 export interface SystemNetwork { name: string; received: number; sent: number; receiveRate?: number; sendRate?: number }
 export interface SystemSnapshot { sessionId: string; platform: 'linux' | 'unsupported'; reason?: string; readAt: number; hostname?: string; release?: string; kernel?: string; cores?: number; uptime?: number; load?: number[]; cpuPercent?: number; memory?: SystemMemory; swap?: SystemMemory; disks: SystemDisk[]; networks: SystemNetwork[]; warnings: string[] }
-export interface ImportRow { row: number; name: string; host: string; port: number; username: string; group: string; authType: string; hasSecret: boolean; duplicate: boolean; canFillSecret?: boolean; error?: string }
+export interface ImportRow { row: number; name: string; host: string; port: number; username: string; group: string; authType: string; hasSecret: boolean; duplicate: boolean; canFillSecret?: boolean; error?: string; protocol?: string }
 export interface ImportPreview { token: string; filename: string; rows: ImportRow[] }
 export interface BatchRequest { profileIds: string[]; command: string; concurrency: number; timeout: number }
 export interface DesktopAPI {
@@ -79,6 +88,8 @@ export interface DesktopAPI {
   disconnect(id: string): Promise<void>;
   write(id: string, data: string): void;
   resize(id: string, cols: number, rows: number): void;
+  listSerialPorts(): Promise<SerialPortInfo[]>;
+  sendBreak(id: string): Promise<void>;
   readTerminal(id: string): Promise<TerminalBuffer>;
   readSystem(id: string): Promise<SystemSnapshot>;
   chooseLogDirectory(): Promise<Config | null>;

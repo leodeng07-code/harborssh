@@ -55,7 +55,7 @@ try {
   assert.equal(await page.locator('main').getAttribute('aria-label'), '网络管理');
   await page.getByRole('option').click(); assert.ok((await currentTarget.innerText()).includes(others[42].name));
   await hostSearch.fill('127.0.0.1'); await page.keyboard.press('Enter');
-  await page.getByRole('button', { name: 'SSH 终端', exact: true }).click(); await page.getByRole('button', { name: '网络管理', exact: true }).click();
+  await page.getByRole('button', { name: '终端', exact: true }).click(); await page.getByRole('button', { name: '网络管理', exact: true }).click();
   assert.ok((await page.getByLabel('当前网络管理目标', { exact: true }).innerText()).includes(p.name));
   await page.getByRole('button', { name: '读取接口', exact: true }).click(); await page.getByRole('tabpanel', { name: '设备接口', exact: true }).getByText('GE0/0/7', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'SNMP 配置', exact: true }).click();

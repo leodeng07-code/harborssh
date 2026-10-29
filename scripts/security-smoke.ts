@@ -33,7 +33,7 @@ try {
     await page.locator('.theme-option').filter({ hasText: name }).click(); assert.equal(await page.locator('html').getAttribute('data-theme'), id);
   }
   await page.screenshot({ path: 'test-results/15-themes-light.png' });
-  await page.getByRole('button', { name: 'SSH 终端', exact: true }).click();
+  await page.getByRole('button', { name: '终端', exact: true }).click();
   await page.screenshot({ path: 'test-results/16-terminal-light.png' });
   const terminalBg = await page.locator('.terminal-pane.visible .xterm-scrollable-element').evaluate(el => getComputedStyle(el).backgroundColor); assert.equal(terminalBg, 'rgb(255, 255, 255)');
   await page.screenshot({ path: 'test-results/16-terminal-light.png' });
@@ -57,7 +57,7 @@ try {
     return new Promise<boolean>(resolve => { const img = new Image(); img.onload = () => resolve(img.naturalWidth === 3840 && img.naturalHeight === 2160); img.onerror = () => resolve(false); img.src = url; });
   }); assert.equal(offlineAsset, true);
   await page.screenshot({ path: 'test-results/20-bubu-theme-settings.png' });
-  await page.getByRole('button', { name: 'SSH 终端', exact: true }).click();
+  await page.getByRole('button', { name: '终端', exact: true }).click();
   assert.match(await page.locator('.terminal-pane.visible .xterm-scrollable-element').evaluate(el => getComputedStyle(el).backgroundColor), /, 0\)$/);
   assert.equal(await page.locator('.terminal-pane.visible .xterm-viewport').evaluate(el => getComputedStyle(el).backgroundColor), 'rgba(0, 0, 0, 0)');
   await page.locator('.terminal-pane.visible .terminal-container').click(); await page.keyboard.insertText('bubu-theme-live-check'); await page.keyboard.press('Enter');

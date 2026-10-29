@@ -24,7 +24,7 @@ try {
   await poll(page, async () => (await window.harbor!.initial()).runtime.sessions.filter(s => s.status === 'connected').length === 3);
   const sidebar = page.locator('.sidebar'), groups = sidebar.getByRole('navigation', { name: '分级主机分组', exact: true }), sessions = sidebar.getByRole('region', { name: '当前会话列表', exact: true });
   await sidebar.getByRole('button', { name: `切换到会话 ${profiles[1].name}`, exact: true }).click();
-  assert.equal(await page.locator('main').getAttribute('aria-label'), 'SSH 终端');
+  assert.equal(await page.locator('main').getAttribute('aria-label'), '终端');
   assert.equal(await sidebar.locator('.session-link.active').getAttribute('title'), profiles[1].name);
   await page.setViewportSize({ width: 1040, height: 700 });
   await page.getByRole('button', { name: '偏好设置', exact: true }).click(); await page.getByLabel('界面字号', { exact: true }).selectOption('18'); await page.locator('.theme-option').filter({ hasText: '布布一二' }).click();

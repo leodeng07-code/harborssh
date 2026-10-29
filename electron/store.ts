@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { Config, Profile, ProfileInput, Secrets, Tunnel, SnmpConfigInput, SnmpTarget, BatchSnmpConfigInput } from '../shared/types';
 import { profileSchema, tunnelSchema, snmpConfigSchema, snmpTargetSchema, batchSnmpConfigSchema } from './validation';
+import { protocolOf, sameHost } from '../shared/connections';
 
 export interface Cipher { available(): boolean; encrypt(value: string): Promise<string>; decrypt(value: string): Promise<string> }
 interface DiskState { version: 1; profiles: Profile[]; tunnels: Tunnel[]; credentials: Record<string, string>; knownHosts: Record<string, string>; snmpTargets?: SnmpTarget[]; snmpCredentials?: Record<string, string>; terminalLogDirectory?: string }
@@ -28,7 +29,7 @@ export class Store {
   }
   config(): Config {
     return structuredClone({
-      profiles: this.state.profiles.map(p => ({ ...p, hasSecret: !!this.state.credentials[p.id], rememberSecret: true })),
+      profiles: this.state.profiles.map(p => ({ ...p, hasSecret: !!this.state.credentials[p.telnetCredentialProfileId || p.id], rememberSecret: true })),
       tunnels: this.state.tunnels,
       snmp: this.state.snmpTargets || [],
       terminalLogDirectory: this.state.terminalLogDirectory || path.join(this.directory, 'logs'),
@@ -45,6 +46,16 @@ export class Store {
     if (!encrypted) return {};
     try { return JSON.parse(await this.cipher.decrypt(encrypted)); }
     catch { throw new Error('凭据无法解密，请编辑连接并重新输入密码或私钥口令'); }
+  }
+  async telnetPassword(id: string): Promise<string> {
+    const p = this.profile(id);
+    if (protocolOf(p) !== 'telnet') throw new Error('此连接不是 Telnet');
+    if (!p.telnetCredentialProfileId) return (await this.secrets(id)).password || '';
+    const source = this.state.profiles.find(v => v.id === p.telnetCredentialProfileId);
+    if (!source || protocolOf(source) !== 'ssh' || source.authType !== 'password' || !sameHost(source.host, p.host)) throw new Error('共用的 SSH 密码连接不存在或 IP 已改变，请重新选择');
+    const password = (await this.secrets(source.id)).password;
+    if (!password) throw new Error('共用的 SSH 连接尚未保存密码，请先补充 SSH 密码');
+    return password;
   }
   async snmpSecrets(id: string): Promise<{ readCommunity?: string; writeCommunity?: string }> {
     this.profile(id);
@@ -68,6 +79,7 @@ export class Store {
   }
   private async applySnmp(next: DiskState, input: SnmpConfigInput) {
     if (!next.profiles.some(p => p.id === input.profileId)) throw new Error('连接不存在');
+    if (next.profiles.find(p => p.id === input.profileId)?.protocol === 'serial') throw new Error('串口连接不支持 SNMP，请选择网络连接');
     const current = next.snmpCredentials?.[input.profileId];
     const secrets = current ? JSON.parse(await this.cipher.decrypt(current)) : {};
     if (input.readCommunity !== undefined) secrets.readCommunity = input.readCommunity;
@@ -96,8 +108,15 @@ export class Store {
   private async applyProfile(next: DiskState, input: ProfileInput) {
     const p = profileSchema.parse(input.profile);
     const old = next.profiles.find(v => v.id === p.id);
+    if (protocolOf(p) !== 'ssh' && next.tunnels.some(t => t.profileId === p.id)) throw new Error('此连接有关联的 SSH 隧道，请先移除隧道再更改协议');
+    if (p.telnetCredentialProfileId) {
+      const source = next.profiles.find(v => v.id === p.telnetCredentialProfileId);
+      if (!source || protocolOf(source) !== 'ssh' || source.authType !== 'password' || !sameHost(source.host, p.host) || !next.credentials[source.id]) throw new Error('请选择同 IP 且已保存密码的 SSH 连接');
+    }
+    const dependents = next.profiles.filter(v => v.id !== p.id && v.telnetCredentialProfileId === p.id);
+    if (dependents.length && (protocolOf(p) !== 'ssh' || p.authType !== 'password' || !sameHost(old?.host || '', p.host) || input.clearSecret && !input.secrets?.password)) throw new Error('此 SSH 密码正被 Telnet 共用，请先解除关联再更改 IP、认证方式或清除密码');
     let secret: Secrets = {};
-    if (!input.clearSecret && old?.authType === p.authType) {
+    if (!input.clearSecret && old?.authType === p.authType && protocolOf(old) === protocolOf(p)) {
       if (next.credentials[p.id]) {
         try { secret = JSON.parse(await this.cipher.decrypt(next.credentials[p.id])); }
         catch { if (!input.secrets?.password && !input.secrets?.passphrase) throw new Error('原凭据无法解密，请重新输入或清除凭据'); }
@@ -106,6 +125,7 @@ export class Store {
     if (p.authType === 'password' && input.secrets?.password) secret.password = input.secrets.password;
     if (p.authType === 'key' && input.secrets?.passphrase) secret.passphrase = input.secrets.passphrase;
     if (p.authType === 'agent') secret = {};
+    if (p.protocol === 'serial' || p.telnetCredentialProfileId) secret = {};
     const hasSecret = !!secret.password || !!secret.passphrase;
     delete next.credentials[p.id];
     if (hasSecret) {
@@ -113,6 +133,7 @@ export class Store {
       next.credentials[p.id] = await this.cipher.encrypt(JSON.stringify(secret));
     }
     const saved = { ...p, hasSecret: false, rememberSecret: true };
+    if (p.protocol === 'serial') { next.snmpTargets = next.snmpTargets?.filter(t => t.profileId !== p.id); if (next.snmpCredentials) delete next.snmpCredentials[p.id]; }
     const index = next.profiles.findIndex(v => v.id === p.id);
     if (index < 0) next.profiles.push(saved); else next.profiles[index] = saved;
   }
@@ -126,16 +147,22 @@ export class Store {
   }
   async deleteProfiles(ids: string[]) {
     const selected = new Set(ids);
+    this.assertProfilesDeletable(ids);
     await this.mutate(next => {
+      this.assertProfilesDeletable(ids, next.profiles);
       next.profiles = next.profiles.filter(p => !selected.has(p.id)); next.tunnels = next.tunnels.filter(t => !selected.has(t.profileId));
       for (const id of selected) delete next.credentials[id];
       next.snmpTargets = next.snmpTargets?.filter(t => !selected.has(t.profileId));
       for (const id of selected) if (next.snmpCredentials) delete next.snmpCredentials[id];
     }); return this.config();
   }
+  assertProfilesDeletable(ids: string[], profiles = this.state.profiles) {
+    const selected = new Set(ids);
+    const dependent = profiles.find(p => p.telnetCredentialProfileId && selected.has(p.telnetCredentialProfileId) && !selected.has(p.id));
+    if (dependent) throw new Error(`“${dependent.name}”正在共用选中 SSH 连接的密码，请先解除关联或一起删除`);
+  }
   async saveTunnel(tunnel: Tunnel) {
-    this.profile(tunnel.profileId);
-    await this.mutate(next => { const index = next.tunnels.findIndex(t => t.id === tunnel.id); if (index < 0) next.tunnels.push(tunnel); else next.tunnels[index] = tunnel; });
+    await this.mutate(next => { const p = next.profiles.find(p => p.id === tunnel.profileId); if (!p || protocolOf(p) !== 'ssh') throw new Error('隧道仅支持 SSH 连接'); const index = next.tunnels.findIndex(t => t.id === tunnel.id); if (index < 0) next.tunnels.push(tunnel); else next.tunnels[index] = tunnel; });
     return this.config();
   }
   async deleteTunnel(id: string) { await this.mutate(next => { next.tunnels = next.tunnels.filter(t => t.id !== id); }); return this.config(); }

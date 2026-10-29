@@ -1,21 +1,33 @@
 import { z } from 'zod';
 import { buildGroupPath, groupLabel, profileGroupPath, GROUP_DEPTH, GROUP_NAME_LIMIT } from '../shared/groups';
+import { defaultSerial } from '../shared/connections';
 
 const host = z.string().trim().min(1, '请填写主机地址').max(253).refine(v => !/[\s\x00-\x1f]/.test(v), '地址中不能包含空格或控制字符');
 export const idSchema = z.string().uuid();
 const port = z.number().int().min(1, '端口必须为 1–65535').max(65535, '端口必须为 1–65535');
 export const profileSchema = z.object({
   id: idSchema, name: z.string().trim().min(1, '请填写连接名称').max(100),
-  host, port, username: z.string().trim().min(1, '请填写用户名').max(128),
+  host, port, username: z.string().trim().max(128).refine(v => !/[\x00-\x1f\x7f]/.test(v), '用户名不能包含控制字符'),
+  protocol: z.enum(['ssh', 'telnet', 'serial']).default('ssh'),
+  encoding: z.enum(['utf8', 'gb18030']).default('utf8'),
+  telnetCredentialProfileId: idSchema.optional(),
+  serial: z.object({ baudRate: z.number().int().min(50).max(4000000), dataBits: z.union([z.literal(5), z.literal(6), z.literal(7), z.literal(8)]), stopBits: z.union([z.literal(1), z.literal(2)]), parity: z.enum(['none', 'even', 'odd', 'mark', 'space']), flowControl: z.enum(['none', 'hardware', 'software']), localEcho: z.boolean(), enterKey: z.enum(['cr', 'crlf']) }).optional(),
   group: z.string().trim().max(256).default('未分组'),
   groupPath: z.array(z.string().trim().min(1, '分组不能跳过上一级').max(GROUP_NAME_LIMIT, '每一级分组名称不能超过 80 个字符')).max(GROUP_DEPTH, '最多支持三级分组').optional(),
   authType: z.enum(['password', 'key', 'agent']),
   privateKeyPath: z.string().max(4096).default(''), agentPath: z.string().max(4096).default(''),
   favorite: z.boolean().default(false), color: z.enum(['teal', 'blue', 'violet', 'amber', 'rose']).default('teal'),
   hasSecret: z.boolean().default(false), rememberSecret: z.boolean().default(false),
-}).refine(p => p.authType !== 'key' || p.privateKeyPath.trim().length > 0, { message: '请选择私钥文件', path: ['privateKeyPath'] })
+}).refine(p => p.protocol !== 'ssh' || p.authType !== 'key' || p.privateKeyPath.trim().length > 0, { message: '请选择私钥文件', path: ['privateKeyPath'] })
+  .superRefine((p, ctx) => {
+    if (p.protocol === 'ssh' && !p.username) ctx.addIssue({ code: 'custom', message: '请填写用户名', path: ['username'] });
+    if (p.protocol !== 'ssh' && p.authType !== 'password') ctx.addIssue({ code: 'custom', message: 'Telnet / 串口不使用 SSH 私钥或 Agent' });
+    if (p.telnetCredentialProfileId && p.protocol !== 'telnet') ctx.addIssue({ code: 'custom', message: '仅 Telnet 可以共用 SSH 密码' });
+    if (p.protocol === 'serial' && (!/^(?:COM[1-9]\d{0,4}|\/dev\/[\w./-]+)$/i.test(p.host) || p.host.includes('..'))) ctx.addIssue({ code: 'custom', message: '请选择有效串口，例如 COM3 或 /dev/ttyUSB0', path: ['host'] });
+    if (p.protocol !== 'serial' && /[@/?#\\]/.test(p.host)) ctx.addIssue({ code: 'custom', message: '请填写 IP 或域名，不包含协议、用户名或路径', path: ['host'] });
+  })
   .superRefine((p, ctx) => { try { buildGroupPath(profileGroupPath(p)); } catch (error) { ctx.addIssue({ code: 'custom', message: (error as Error).message, path: ['groupPath'] }); } })
-  .transform(p => { const groupPath = profileGroupPath(p); return { ...p, groupPath, group: groupLabel(groupPath) }; });
+  .transform(p => { const groupPath = profileGroupPath(p); return { ...p, username: p.protocol === 'serial' ? '' : p.username, encoding: p.protocol === 'ssh' ? 'utf8' as const : p.encoding, host: p.protocol === 'serial' && /^COM\d+$/i.test(p.host) ? p.host.toUpperCase() : p.host, serial: p.protocol === 'serial' ? p.serial || { ...defaultSerial } : undefined, groupPath, group: groupLabel(groupPath) }; });
 export const profileInputSchema = z.object({
   profile: profileSchema,
   secrets: z.object({ password: z.string().max(16384).optional(), passphrase: z.string().max(16384).optional() }).optional(),

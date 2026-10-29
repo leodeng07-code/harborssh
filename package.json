@@ -1,8 +1,8 @@
 {
   "name": "harborssh",
-  "version": "0.6.2",
+  "version": "0.7.0",
   "private": true,
-  "description": "Harbor SSH — Windows 批量 SSH 与隧道管理工具",
+  "description": "Harbor SSH — Windows SSH、Telnet、串口与隧道管理工具",
   "author": "Harbor SSH",
   "license": "MIT",
   "type": "module",
@@ -26,11 +26,14 @@
     "test:network-query": "tsx scripts/network-query-smoke.ts",
     "test:mac-mode": "tsx scripts/mac-mode-smoke.ts",
     "test:sidebar": "tsx scripts/sidebar-smoke.ts",
-    "test:snmp-probe": "tsx scripts/snmp-probe-smoke.ts"
+    "test:snmp-probe": "tsx scripts/snmp-probe-smoke.ts",
+    "test:protocols": "tsx scripts/device-terminal-smoke.ts"
   },
   "dependencies": {
     "exceljs": "4.4.0",
+    "iconv-lite": "0.7.3",
     "net-snmp": "3.29.2",
+    "serialport": "13.0.0",
     "ssh2": "1.17.0"
   },
   "build": {
@@ -72,7 +75,10 @@
         "dir"
       ],
       "icon": "assets/icon.png"
-    }
+    },
+    "asarUnpack": [
+      "node_modules/@serialport/bindings-cpp/prebuilds/**/*"
+    ]
   },
   "devDependencies": {
     "@playwright/test": "1.64.1",

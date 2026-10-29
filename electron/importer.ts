@@ -6,9 +6,11 @@ import yauzl from 'yauzl';
 import JSZip from 'jszip';
 import type { Config, ImportPreview, ImportRow, ProfileInput } from '../shared/types';
 import { profileInputSchema, message } from './validation';
+import { defaultSerial, protocolOf } from '../shared/connections';
 import { buildGroupPath, groupLabel, profileGroupPath } from '../shared/groups';
 
 const aliases: Record<string, string[]> = {
+  protocol: ['协议', '连接协议', 'protocol'], encoding: ['终端编码', 'encoding'], baudRate: ['波特率', 'baudrate'], dataBits: ['数据位', 'databits'], stopBits: ['停止位', 'stopbits'], parity: ['校验', 'parity'], flowControl: ['流控', 'flowcontrol'], localEcho: ['本地回显', 'localecho'], enterKey: ['回车发送', 'enterkey'],
   name: ['连接名称', '名称', 'name', 'label'], host: ['主机地址', '地址', '主机', 'ip', 'host', 'hostname', '服务器地址'],
   port: ['端口', 'port'], username: ['用户名', '用户', 'username', 'user'],
   authType: ['认证方式', '认证', 'authtype', 'auth', 'authentication'], password: ['密码', 'password'],
@@ -20,7 +22,7 @@ const aliases: Record<string, string[]> = {
 };
 const normalize = (value: string) => value.replace(/^\uFEFF/, '').trim().toLowerCase().replace(/[\s_-]+/g, '');
 const keys = new Map(Object.entries(aliases).flatMap(([key, values]) => values.map(v => [normalize(v), key] as const)));
-export const endpoint = (p: { host: string; port: number; username: string }) => `${p.username}@${p.host.toLowerCase()}:${p.port}`;
+export const endpoint = (p: { host: string; port: number; username: string; protocol?: string }) => `${p.protocol || 'ssh'}:${p.username}@${p.host.toLowerCase()}:${p.port}`;
 
 async function checkArchive(filename: string) {
   // Check uncompressed sizes before ExcelJS expands XML in memory.
@@ -95,7 +97,7 @@ export async function parseImport(filename: string, config: Config): Promise<Imp
   for (let row = 1; row <= Math.min(10, sheet.rowCount); row++) {
     const candidate = new Map<number, string>();
     sheet.getRow(row).eachCell((cell, col) => { const key = keys.get(normalize(cellText(cell))); if (key) candidate.set(col, key); });
-    if ([...candidate.values()].includes('host') && [...candidate.values()].includes('username')) { header = row; columns = candidate; break; }
+    if ([...candidate.values()].includes('host') && ([...candidate.values()].includes('username') || [...candidate.values()].includes('protocol'))) { header = row; columns = candidate; break; }
   }
   if (!header) throw new Error('未识别表头，至少需要“主机地址”和“用户名”两列，请参考导入模板');
   if (new Set(columns.values()).size !== columns.size) throw new Error('表头中存在重复字段，请保留每个字段的一列');
@@ -110,12 +112,14 @@ export async function parseImport(filename: string, config: Config): Promise<Imp
     try {
       for (const [col, key] of columns) raw[key] = cellText(row.getCell(col));
       if (Object.values(raw).every(v => !v.trim())) continue;
+      const protocolText = normalize(raw.protocol || 'ssh');
+      const protocol = ['serial', '串口', 'console'].includes(protocolText) ? 'serial' : protocolText;
       const auth = normalize(raw.authType || (raw.privateKeyPath ? 'key' : 'password'));
-      const authType = ['password', '密码'].includes(auth) ? 'password' : ['key', 'privatekey', '私钥', '密钥'].includes(auth) ? 'key' : ['agent', 'sshagent'].includes(auth) ? 'agent' : auth;
-      Object.assign(preview, { name: raw.name?.trim() || raw.host?.trim() || '', host: raw.host?.trim() || '', port: raw.port?.trim() ? Number(raw.port.trim()) : 22, username: raw.username?.trim() || '', group: raw.group?.trim() || '未分组', authType, hasSecret: !!raw.password || !!raw.passphrase });
+      const authType = protocol !== 'ssh' ? 'password' : ['password', '密码'].includes(auth) ? 'password' : ['key', 'privatekey', '私钥', '密钥'].includes(auth) ? 'key' : ['agent', 'sshagent'].includes(auth) ? 'agent' : auth;
+      Object.assign(preview, { protocol, name: raw.name?.trim() || raw.host?.trim() || '', host: raw.host?.trim() || '', port: raw.port?.trim() ? Number(raw.port.trim()) : protocol === 'telnet' ? 23 : 22, username: raw.username?.trim() || '', group: raw.group?.trim() || '未分组', authType, hasSecret: protocol !== 'serial' && (!!raw.password || !!raw.passphrase) });
       const groupPath = importedGroupPath(raw); preview.group = groupLabel(groupPath);
       const input = profileInputSchema.parse({
-        profile: { ...preview, groupPath, id: randomUUID(), privateKeyPath: raw.privateKeyPath?.trim() || '', agentPath: raw.agentPath?.trim() || '', favorite: false, color: 'teal', rememberSecret: false },
+        profile: { ...preview, protocol, encoding: raw.encoding?.trim() || 'utf8', serial: protocol === 'serial' ? { ...defaultSerial, baudRate: raw.baudRate ? Number(raw.baudRate) : defaultSerial.baudRate, dataBits: raw.dataBits ? Number(raw.dataBits) : 8, stopBits: raw.stopBits ? Number(raw.stopBits) : 1, parity: raw.parity || 'none', flowControl: raw.flowControl || 'none', localEcho: ['true', '1', '是'].includes(raw.localEcho?.trim().toLowerCase()), enterKey: raw.enterKey || 'cr' } : undefined, groupPath, id: randomUUID(), privateKeyPath: raw.privateKeyPath?.trim() || '', agentPath: raw.agentPath?.trim() || '', favorite: false, color: 'teal', rememberSecret: false },
         secrets: { password: raw.password || undefined, passphrase: raw.passphrase || undefined },
       });
       const key = endpoint(input.profile), existing = config.profiles.find(p => endpoint(p) === key);
@@ -152,8 +156,9 @@ export async function exportProfiles(filename: string, config: Config) {
     { header: '私钥路径', key: 'privateKeyPath', width: 42 }, { header: '私钥口令', key: 'passphrase', width: 18 },
     { header: '设备类型', key: 'deviceType', width: 20 }, { header: '地点', key: 'location', width: 20 }, { header: '网络类型', key: 'networkType', width: 20 },
     { header: 'Agent 路径', key: 'agentPath', width: 30 },
+    ...['protocol', 'encoding', 'baudRate', 'dataBits', 'stopBits', 'parity', 'flowControl', 'localEcho', 'enterKey'].map((key, i) => ({ header: ['协议', '终端编码', '波特率', '数据位', '停止位', '校验', '流控', '本地回显', '回车发送'][i], key, width: 16 })),
   ];
-  for (const p of config.profiles) { const [deviceType = '', location = '', networkType = ''] = profileGroupPath(p); sheet.addRow({ ...p, deviceType, location, networkType, password: '', passphrase: '' }); }
+  for (const p of config.profiles) { const [deviceType = '', location = '', networkType = ''] = profileGroupPath(p); sheet.addRow({ ...p, ...(p.serial || {}), protocol: protocolOf(p), encoding: p.encoding || 'utf8', deviceType, location, networkType, password: '', passphrase: '' }); }
   sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' }, name: 'Arial', size: 11 };
   sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF174B49' } }; sheet.getRow(1).height = 28;
   sheet.getColumn('password').numFmt = '@'; sheet.getColumn('passphrase').numFmt = '@';

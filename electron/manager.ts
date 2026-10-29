@@ -14,6 +14,8 @@ import { SftpService } from './sftp';
 import { batchCompletion } from './batch-result';
 import { SessionLogs } from './session-logs';
 import { SystemMonitor } from './system-monitor';
+import { DeviceTerminal, type SerialFactory } from './device-terminal';
+import { protocolOf, connectionAddress } from '../shared/connections';
 
 interface Resource { closed: boolean; profile?: Profile; client?: Client; server?: Server; streams: Set<Duplex>; cancel?: () => void; onCancel?: () => void; onFailure?: (reason: string) => void }
 const resource = (): Resource => ({ closed: false, streams: new Set() });
@@ -30,7 +32,7 @@ export class Manager {
   private sessions = new Map<string, SessionInfo>();
   private sessionResources = new Map<string, Resource>();
   private fileResources = new Map<string, { resource: Resource; pending: Promise<Client> }>();
-  private shells = new Map<string, ClientChannel>();
+  private shells = new Map<string, ClientChannel | DeviceTerminal>();
   private buffers = new Map<string, { seq: number; bytes: number; chunks: { seq: number; data: string; bytes: number }[] }>();
   private tunnelStates = new Map<string, TunnelInfo>();
   private tunnelResources = new Map<string, Resource>();
@@ -38,7 +40,7 @@ export class Manager {
   private batchResources = new Map<string, Set<Resource>>();
   private cancelled = new Set<string>();
   private publishTimer?: NodeJS.Timeout;
-  constructor(private store: Store, private emit: (event: AppEvent) => void, private verify: (profile: Profile, fingerprint: string) => Promise<boolean>) {
+  constructor(private store: Store, private emit: (event: AppEvent) => void, private verify: (profile: Profile, fingerprint: string) => Promise<boolean>, private serialFactory?: SerialFactory) {
     this.logs = new SessionLogs((id, log) => {
       const session = this.sessions.get(id); if (session) { session.log = log; this.schedulePublish(); }
       if (log.status === 'error') this.emit({ type: 'notice', message: log.message!, error: true });
@@ -56,6 +58,7 @@ export class Manager {
   }
   private async dial(profileId: string, r: Resource, original?: Profile): Promise<Client> {
     const p = original || this.store.profile(profileId);
+    if (protocolOf(p) !== 'ssh') throw new Error('此功能仅支持 SSH 连接');
     const secrets = await this.store.secrets(profileId);
     const config: ConnectConfig = {
       host: p.host, port: p.port, username: p.username, readyTimeout: 90_000,
@@ -96,7 +99,7 @@ export class Manager {
     const p = this.store.profile(profileId);
     if (this.sessionResources.size >= 100) throw new Error('最多同时打开 100 个终端，请先关闭部分标签');
     const id = randomUUID(); const r = resource(); r.profile = structuredClone(p);
-    const info: SessionInfo = { id, profileId, name: p.name, status: 'connecting' };
+    const info: SessionInfo = { id, profileId, name: p.name, status: 'connecting', protocol: protocolOf(p), encoding: p.encoding || 'utf8', endpoint: connectionAddress(p) };
     this.sessions.set(id, info); this.sessionResources.set(id, r);
     this.buffers.set(id, { seq: 0, bytes: 0, chunks: [] });
     this.logs.start(id, p, this.store.config().terminalLogDirectory!);
@@ -106,6 +109,23 @@ export class Manager {
     };
     r.onFailure = fail;
     this.publish();
+    if (protocolOf(p) !== 'ssh') {
+      void (async () => {
+        const password = p.protocol === 'telnet' ? await this.store.telnetPassword(profileId) : '';
+        if (r.closed) return;
+        if (/[\r\n\0]/.test(p.username) || /[\r\n\0]/.test(password)) throw new Error('Telnet 自动登录的用户名和密码不能包含换行或空字符');
+        const stream = new DeviceTerminal(p, () => { if (!r.closed) { info.status = 'connected'; info.connectedAt = Date.now(); this.publish(); } }, this.serialFactory, password);
+        this.track(r, stream); this.shells.set(id, stream);
+        stream.on('data', (data: Buffer) => this.terminalOutput(id, data));
+        stream.on('error', (error: Error) => fail(message(error)));
+        stream.once('close', () => {
+          if (r.closed) return;
+          info.status = 'closed'; info.message = p.protocol === 'serial' ? '串口已关闭或设备已拔出' : 'Telnet 远程会话已结束';
+          stop(r); this.shells.delete(id); this.logs.finish(id, info.message); this.publish();
+        });
+      })().catch(error => fail(message(error)));
+      return id;
+    }
     void this.dial(profileId, r).then(client => {
       if (r.closed) return;
       client.shell({ term: 'xterm-256color', cols: 100, rows: 30 }, (err, stream) => {
@@ -127,7 +147,7 @@ export class Manager {
   private terminalOutput(id: string, data: Buffer) {
     const buffer = this.buffers.get(id); if (!buffer) return;
     const drain = this.logs.append(id, data), shell = this.shells.get(id);
-    if (drain && shell) { shell.pause(); shell.stderr.pause(); void drain.then(() => { if (!shell.destroyed) { shell.resume(); shell.stderr.resume(); } }); }
+    if (drain && shell) { shell.pause(); if ('stderr' in shell) shell.stderr.pause(); void drain.then(() => { if (!shell.destroyed) { shell.resume(); if ('stderr' in shell) shell.stderr.resume(); } }); }
     // Keep bounded scrollback in the main process so switching tabs never loses output.
     for (let offset = 0; offset < data.length; offset += 65536) {
       const chunk = data.subarray(offset, offset + 65536);
@@ -160,6 +180,11 @@ export class Manager {
   resize(id: string, cols: number, rows: number) {
     const s = this.shells.get(id);
     if (s && !s.destroyed && Number.isInteger(cols) && Number.isInteger(rows) && cols >= 2 && cols <= 1000 && rows >= 1 && rows <= 500) s.setWindow(rows, cols, 0, 0);
+  }
+  async sendBreak(id: string) {
+    const stream = this.shells.get(id);
+    if (!(stream instanceof DeviceTerminal) || this.sessions.get(id)?.status !== 'connected') throw new Error('请先连接串口或 Telnet 终端');
+    await stream.sendBreak();
   }
   disconnect(id: string) {
     this.logs.finish(id, '手动断开');
@@ -308,12 +333,13 @@ export class Manager {
     for (const item of job.results) if (item.status === 'queued') item.status = 'cancelled';
     this.publish();
   }
-  async closeProfile(id: string) {
-    this.assertProfilesDeletable([id]);
+  async closeProfile(id: string, deletingIds: string[] = [id]) {
+    this.assertProfilesDeletable(deletingIds);
     for (const s of this.sessions.values()) if (s.profileId === id) this.disconnect(s.id);
     await Promise.all(this.store.config().tunnels.filter(t => t.profileId === id).map(t => this.removeTunnel(t.id)));
   }
   assertProfilesDeletable(ids: string[]) {
+    this.store.assertProfilesDeletable(ids);
     const selected = new Set(ids);
     if (this.jobs.some(j => j.status === 'running' && j.results.some(r => selected.has(r.profileId) && (r.status === 'queued' || r.status === 'running')))) throw new Error('选中连接正在执行批量任务，请先停止任务再删除');
   }

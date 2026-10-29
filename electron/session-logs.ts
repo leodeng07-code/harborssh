@@ -2,6 +2,7 @@ import { constants, promises as fs } from 'node:fs';
 import type { FileHandle } from 'node:fs/promises';
 import path from 'node:path';
 import type { Profile, TerminalLogInfo } from '../shared/types';
+import { protocolLabel, connectionAddress } from '../shared/connections';
 
 interface RecordLog {
   id: string; name: string; filename: string; handle?: FileHandle;
@@ -31,7 +32,7 @@ export class SessionLogs {
     record.tail = (async () => {
       await fs.mkdir(directory, { recursive: true, mode: 0o700 });
       record.handle = await fs.open(filename, 'wx', 0o600);
-      await record.handle.writeFile(`Harbor SSH 终端日志\r\n连接名称：${profile.name.replace(/[\r\n]/g, ' ')}\r\n设备：${profile.host}:${profile.port}\r\n开始时间：${new Date().toISOString()}\r\n--- 远端终端输出 ---\r\n`);
+      await record.handle.writeFile(`Harbor SSH 终端日志\r\n连接名称：${profile.name.replace(/[\r\n]/g, ' ')}\r\n协议：${protocolLabel(profile)}\r\n设备：${connectionAddress(profile)}\r\n开始时间：${new Date().toISOString()}\r\n--- 远端终端输出 ---\r\n`);
     })().catch(error => this.fail(record, error));
   }
   private fail(record: RecordLog, error: unknown) {

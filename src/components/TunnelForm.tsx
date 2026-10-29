@@ -1,10 +1,12 @@
 import { useState, type FormEvent } from 'react';
 import { ArrowLeftRight, Globe2, Laptop, Server } from 'lucide-react';
 import type { Config, Profile, Tunnel } from '../../shared/types';
+import { protocolOf } from '../../shared/connections';
 import { api, errorText } from '../api';
 import { Modal } from './Modal';
 
 export function TunnelForm({ tunnel, profiles, onSaved, onClose }: { tunnel?: Tunnel; profiles: Profile[]; onSaved: (c: Config) => void; onClose: () => void }) {
+  profiles = profiles.filter(p => protocolOf(p) === 'ssh');
   const [t, setT] = useState<Tunnel>(tunnel || { id: crypto.randomUUID(), name: '', profileId: profiles[0]?.id || '', type: 'local', bindHost: '127.0.0.1', bindPort: 8080, targetHost: '127.0.0.1', targetPort: 80 });
   const [busy, setBusy] = useState(false); const [error, setError] = useState('');
   const update = <K extends keyof Tunnel>(key: K, value: Tunnel[K]) => setT(t => ({ ...t, [key]: value }));

@@ -79,7 +79,7 @@ try {
   const cachedTable = await global.locator('.network-query-table').innerText();
   const cachedInput = await input.inputValue();
   const cachedTime = await global.locator('.network-query-progress>span').innerText();
-  await page.getByRole('button', { name: 'SSH 终端', exact: true }).click();
+  await page.getByRole('button', { name: '终端', exact: true }).click();
   assert.equal(await global.isVisible(), false);
   if (!process.env.HARBOR_QUERY_QUICK) await page.waitForTimeout(31000);
   await page.getByRole('button', { name: '网络管理', exact: true }).click();
