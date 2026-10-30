@@ -6,9 +6,10 @@ let previewConfig: Config = { profiles: [], tunnels: [] };
 try { previewConfig = JSON.parse(localStorage.getItem('harbor-preview') || '{"profiles":[],"tunnels":[]}'); } catch {}
 function savePreview() { localStorage.setItem('harbor-preview', JSON.stringify(previewConfig)); return structuredClone(previewConfig); }
 const browser: DesktopAPI = {
+  themeWallpaper: async (_id, download) => { if (download) throw new Error('请在桌面应用中获取官方背景'); return null; },
   listSerialPorts: unavailable, sendBreak: unavailable,
   lockStatus: async () => ({ configured: true, unlocked: true }), setupPassword: unavailable, unlock: unavailable, changePassword: unavailable,
-  initial: async () => ({ config: structuredClone(previewConfig), runtime: { sessions: [], tunnels: [], jobs: [] }, version: '0.7.1', secureStorage: false, platform: 'browser' }),
+  initial: async () => ({ config: structuredClone(previewConfig), runtime: { sessions: [], tunnels: [], jobs: [] }, version: '0.7.2', secureStorage: false, platform: 'browser' }),
   saveProfile: async input => { const p = { ...input.profile, hasSecret: false, rememberSecret: false }; previewConfig.profiles = [...previewConfig.profiles.filter(x => x.id !== p.id), p]; return savePreview(); },
   deleteProfile: async id => { previewConfig.profiles = previewConfig.profiles.filter(p => p.id !== id); previewConfig.tunnels = previewConfig.tunnels.filter(t => t.profileId !== id); return savePreview(); },
   deleteProfiles: async ids => { const selected = new Set(ids); previewConfig.profiles = previewConfig.profiles.filter(p => !selected.has(p.id)); previewConfig.tunnels = previewConfig.tunnels.filter(t => !selected.has(t.profileId)); return savePreview(); },

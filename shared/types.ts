@@ -74,6 +74,7 @@ export interface ImportRow { row: number; name: string; host: string; port: numb
 export interface ImportPreview { token: string; filename: string; rows: ImportRow[] }
 export interface BatchRequest { profileIds: string[]; command: string; concurrency: number; timeout: number }
 export interface DesktopAPI {
+  themeWallpaper(id: import('./wallpapers').RemoteWallpaperId, download: boolean): Promise<string | null>;
   lockStatus(): Promise<{ configured: boolean; unlocked: boolean }>;
   setupPassword(password: string): Promise<void>;
   unlock(password: string): Promise<void>;

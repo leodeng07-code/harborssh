@@ -28,3 +28,6 @@ id_rsa
 id_rsa.*
 id_ed25519
 id_ed25519.*
+
+# Downloaded official wallpapers belong only in the local user cache.
+theme-wallpapers/

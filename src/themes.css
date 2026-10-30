@@ -53,3 +53,21 @@ input[type=checkbox] { accent-color:var(--accent) }
 .theme-option small { flex:1;padding-bottom:10px }
 .theme-kind { display:inline-flex;align-items:center;gap:5px;color:var(--muted);font-size:.8rem;line-height:1.6 }
 .theme-option:focus-visible { outline:2px solid var(--accent);outline-offset:3px }
+
+.theme-family-nav { display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px }
+.theme-family-nav button { display:inline-flex;align-items:center;gap:8px;padding:7px 11px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text);font-size:.9rem }
+.theme-family-nav button:hover { border-color:var(--accent);color:var(--accent) }
+.theme-family-nav span { color:var(--muted);font-size:.8rem }
+.theme-preview.with-wallpaper { height:auto;aspect-ratio:16/9;isolation:isolate }
+.theme-preview.with-wallpaper>img { opacity:1;object-position:center }
+.theme-preview.with-wallpaper>.theme-preview-palette { position:absolute;right:6px;bottom:6px;display:flex;gap:4px;flex:none;padding:4px;border-radius:12px;background:#ffffffd9 }
+.theme-preview-palette i { display:block;width:10px;height:10px;border-radius:50%;border:1px solid #0002 }
+.theme-preview.with-wallpaper>.theme-preview-pending { display:flex;flex-direction:column;justify-content:center;align-items:center;position:absolute;inset:0;gap:3px;padding:8px }
+.theme-preview-pending span { font-size:.9rem;height:auto;opacity:1 }
+.theme-preview-pending small { flex:0;padding:0;margin:0;font-size:.75rem;color:inherit;opacity:.85 }
+.theme-download-state { margin-left:auto;font-size:.75rem }
+.wallpaper-download { display:flex;align-items:center;flex-wrap:wrap;gap:8px;color:var(--accent);font-size:.9rem;line-height:1.8;margin-bottom:14px }
+.wallpaper-download.error { color:var(--rose) }
+.wallpaper-download>span { flex:1;min-width:150px;overflow-wrap:anywhere }
+.wallpaper-download svg { flex-shrink:0 }
+.wallpaper-settings .wallpaper-credit { margin-top:10px;font-size:.8rem }

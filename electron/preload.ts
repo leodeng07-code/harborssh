@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { DesktopAPI, AppEvent } from '../shared/types';
 
 const api: DesktopAPI = {
+  themeWallpaper: (id, download) => ipcRenderer.invoke('harbor:theme-wallpaper', id, download),
   listSerialPorts: () => ipcRenderer.invoke('harbor:serial-list'),
   sendBreak: id => ipcRenderer.invoke('harbor:terminal-break', id),
   lockStatus: () => ipcRenderer.invoke('harbor:lock-status'),
