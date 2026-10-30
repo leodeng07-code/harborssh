@@ -1,0 +1,212 @@
+[
+  {
+    "id": "tanjiro",
+    "name": "灶门炭治郎",
+    "group": "protagonist",
+    "source": "https://kimetsu.com/anime/hashirageikohen/character/",
+    "imageUrl": "https://kimetsu.com/anime/hashirageikohen/assets/img/chara/img_chara_tanjiro.jpg",
+    "file": "src/assets/themes/kimetsu/tanjiro.jpg",
+    "dimensions": [
+      1600,
+      900
+    ],
+    "bytes": 195189,
+    "sha256": "20eea1ec7c061d017d9ed361deb67f32aa807141e484e8346972742d52f44ed8"
+  },
+  {
+    "id": "nezuko",
+    "name": "灶门祢豆子",
+    "group": "protagonist",
+    "source": "https://kimetsu.com/anime/hashirageikohen/character/",
+    "imageUrl": "https://kimetsu.com/anime/hashirageikohen/assets/img/chara/img_chara_nezuko.jpg",
+    "file": "src/assets/themes/kimetsu/nezuko.jpg",
+    "dimensions": [
+      1600,
+      900
+    ],
+    "bytes": 226082,
+    "sha256": "f860833c7ed673e1b9f6943a614ad115d92a29423acdb815a3811c4e0dc95a72"
+  },
+  {
+    "id": "zenitsu",
+    "name": "我妻善逸",
+    "group": "protagonist",
+    "source": "https://kimetsu.com/anime/hashirageikohen/character/",
+    "imageUrl": "https://kimetsu.com/anime/hashirageikohen/assets/img/chara/img_chara_zennitsu.jpg",
+    "file": "src/assets/themes/kimetsu/zenitsu.jpg",
+    "dimensions": [
+      1600,
+      900
+    ],
+    "bytes": 258316,
+    "sha256": "6c110632da8f730a0998870d748cd2f0f012d280c485fa19c80dee3b67fff261"
+  },
+  {
+    "id": "inosuke",
+    "name": "嘴平伊之助",
+    "group": "protagonist",
+    "source": "https://kimetsu.com/anime/hashirageikohen/character/",
+    "imageUrl": "https://kimetsu.com/anime/hashirageikohen/assets/img/chara/img_chara_inosuke.jpg",
+    "file": "src/assets/themes/kimetsu/inosuke.jpg",
+    "dimensions": [
+      1600,
+      900
+    ],
+    "bytes": 117482,
+    "sha256": "329ea693e2957612f36b59fcf7c91c1c629954b7f04c267d3dd2b025a1a4677d"
+  },
+  {
+    "id": "kanao",
+    "name": "栗花落香奈乎",
+    "group": "protagonist",
+    "source": "https://kimetsu.com/anime/hashirageikohen/character/",
+    "imageUrl": "https://kimetsu.com/anime/hashirageikohen/assets/img/chara/img_chara_kanawo.jpg",
+    "file": "src/assets/themes/kimetsu/kanao.jpg",
+    "dimensions": [
+      1600,
+      900
+    ],
+    "bytes": 127288,
+    "sha256": "eb1a6c99f6ec5dfd9b0998e566ea20e19fbca879e52f266b2263f389944100f1"
+  },
+  {
+    "id": "genya",
+    "name": "不死川玄弥",
+    "group": "protagonist",
+    "source": "https://kimetsu.com/anime/hashirageikohen/character/",
+    "imageUrl": "https://kimetsu.com/anime/hashirageikohen/assets/img/chara/img_chara_gennya.jpg",
+    "file": "src/assets/themes/kimetsu/genya.jpg",
+    "dimensions": [
+      1600,
+      900
+    ],
+    "bytes": 155929,
+    "sha256": "19dc2c53b228dc62faee53523e12cc6964fdf234386bf6112938d96f2111c3fa"
+  },
+  {
+    "id": "giyu",
+    "name": "冨冈义勇",
+    "group": "hashira",
+    "source": "https://kimetsu.com/anime/hashirageikohen/character/",
+    "imageUrl": "https://kimetsu.com/anime/hashirageikohen/assets/img/chara/img_chara_giyu.jpg",
+    "file": "src/assets/themes/kimetsu/giyu.jpg",
+    "dimensions": [
+      1600,
+      900
+    ],
+    "bytes": 139351,
+    "sha256": "05dfd7b86101292f30989f0309aa7df0b1df1f877957f372fe4dfb74cdaf8168"
+  },
+  {
+    "id": "shinobu",
+    "name": "胡蝶忍",
+    "group": "hashira",
+    "source": "https://kimetsu.com/anime/hashirageikohen/character/",
+    "imageUrl": "https://kimetsu.com/anime/hashirageikohen/assets/img/chara/img_chara_shinobu.jpg",
+    "file": "src/assets/themes/kimetsu/shinobu.jpg",
+    "dimensions": [
+      1600,
+      900
+    ],
+    "bytes": 240466,
+    "sha256": "70f1cbd862b254f00632b316907ed4c5118d58ced43aefbc6d1a08b2d25ef61b"
+  },
+  {
+    "id": "rengoku",
+    "name": "炼狱杏寿郎",
+    "group": "hashira",
+    "source": "https://kimetsu.com/anime/risshihen/character/?chara=kyojurou",
+    "imageUrl": "https://kimetsu.com/anime/risshihen/assets/img/character/img_chara_30.jpg",
+    "file": "src/assets/themes/kimetsu/rengoku.jpg",
+    "dimensions": [
+      850,
+      478
+    ],
+    "bytes": 235739,
+    "sha256": "94b69866039ce5f2798d2b7542d8eb2e403efdfb70c2107f85815f1b34d0d77d"
+  },
+  {
+    "id": "tengen",
+    "name": "宇髓天元",
+    "group": "hashira",
+    "source": "https://kimetsu.com/anime/hashirageikohen/character/",
+    "imageUrl": "https://kimetsu.com/anime/hashirageikohen/assets/img/chara/img_chara_uzui.jpg",
+    "file": "src/assets/themes/kimetsu/tengen.jpg",
+    "dimensions": [
+      1600,
+      900
+    ],
+    "bytes": 159181,
+    "sha256": "226549d04826803f386251bece187b110742e1e6908f130457098b5405021d1e"
+  },
+  {
+    "id": "muichiro",
+    "name": "时透无一郎",
+    "group": "hashira",
+    "source": "https://kimetsu.com/anime/hashirageikohen/character/",
+    "imageUrl": "https://kimetsu.com/anime/hashirageikohen/assets/img/chara/img_chara_muichiro.jpg",
+    "file": "src/assets/themes/kimetsu/muichiro.jpg",
+    "dimensions": [
+      1600,
+      900
+    ],
+    "bytes": 144611,
+    "sha256": "af07cc0a8ddaa22b6bd44ae8c2a659535bfbaa614f62a20202793fc943f421e6"
+  },
+  {
+    "id": "mitsuri",
+    "name": "甘露寺蜜璃",
+    "group": "hashira",
+    "source": "https://kimetsu.com/anime/hashirageikohen/character/",
+    "imageUrl": "https://kimetsu.com/anime/hashirageikohen/assets/img/chara/img_chara_mitsuri.jpg",
+    "file": "src/assets/themes/kimetsu/mitsuri.jpg",
+    "dimensions": [
+      1600,
+      900
+    ],
+    "bytes": 234777,
+    "sha256": "52dcb8b54801cfe291f44cc1d51bc4ebd52369111442e42e9ee6394f0fb98721"
+  },
+  {
+    "id": "obanai",
+    "name": "伊黑小芭内",
+    "group": "hashira",
+    "source": "https://kimetsu.com/anime/hashirageikohen/character/",
+    "imageUrl": "https://kimetsu.com/anime/hashirageikohen/assets/img/chara/img_chara_iguro.jpg",
+    "file": "src/assets/themes/kimetsu/obanai.jpg",
+    "dimensions": [
+      1600,
+      900
+    ],
+    "bytes": 225880,
+    "sha256": "4ef2071563d793746fefe100019420da809f7378ed0709a236bfa7530642211b"
+  },
+  {
+    "id": "sanemi",
+    "name": "不死川实弥",
+    "group": "hashira",
+    "source": "https://kimetsu.com/anime/hashirageikohen/character/",
+    "imageUrl": "https://kimetsu.com/anime/hashirageikohen/assets/img/chara/img_chara_sanemi.jpg",
+    "file": "src/assets/themes/kimetsu/sanemi.jpg",
+    "dimensions": [
+      1000,
+      563
+    ],
+    "bytes": 76697,
+    "sha256": "deb8cb00435c8ec582e3bbfdbfbeffd87e7a6249daaab58e4ad1cd30c1f49e61"
+  },
+  {
+    "id": "gyomei",
+    "name": "悲鸣屿行冥",
+    "group": "hashira",
+    "source": "https://kimetsu.com/anime/hashirageikohen/character/",
+    "imageUrl": "https://kimetsu.com/anime/hashirageikohen/assets/img/chara/img_chara_himejima.jpg",
+    "file": "src/assets/themes/kimetsu/gyomei.jpg",
+    "dimensions": [
+      1600,
+      900
+    ],
+    "bytes": 106273,
+    "sha256": "19f098f2765fce381d98c149ba86d5ed486593d680e20018707611ad5b56013c"
+  }
+]

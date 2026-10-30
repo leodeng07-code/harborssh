@@ -5,10 +5,8 @@ import os from 'node:os';
 import assert from 'node:assert/strict';
 import { profile, sshFixture } from '../tests/helpers';
 import { themes } from '../src/themes';
-import { remoteWallpapers } from '../shared/wallpapers';
-
-const live = process.argv.includes('--live');
 import { poll } from './poll.mjs';
+import characterSources from '../assets/鬼灭之刃角色图片来源.json';
 
 const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'harborssh-themes-'));
 const fixture = await sshFixture();
@@ -21,7 +19,11 @@ const luminance = (rgb: number[]) => rgb.map(v => v / 255).map(v => v <= .04045 
 const contrast = (a: number[], b: number[]) => (Math.max(luminance(a), luminance(b)) + .05) / (Math.min(luminance(a), luminance(b)) + .05);
 async function launch() {
   app = await electron.launch({ args: [process.env.HARBOR_SMOKE_APP || '.', '--no-sandbox', '--ozone-platform=x11'], env, timeout: 20000 });
-  await app.evaluate(({ dialog }) => { dialog.showMessageBox = async () => ({ response: 1, checkboxChecked: false }); });
+  await app.evaluate(({ dialog, session }) => {
+    dialog.showMessageBox = async () => ({ response: 1, checkboxChecked: false });
+    (globalThis as any).__themeNetworkRequests = 0;
+    session.defaultSession.webRequest.onBeforeRequest({ urls: ['https://*/*', 'http://*/*'] }, (_details, callback) => { (globalThis as any).__themeNetworkRequests++; callback({ cancel: true }); });
+  });
   const page = await app.firstWindow(); page.setDefaultTimeout(15000); page.on('pageerror', e => errors.push(e.message)); return page;
 }
 try {
@@ -35,28 +37,12 @@ try {
   await page.getByText('已连接', { exact: true }).last().waitFor();
   await page.setViewportSize({ width: 1040, height: 700 });
   await page.getByRole('button', { name: '偏好设置', exact: true }).click(); await page.getByLabel('界面字号', { exact: true }).selectOption('18');
-  const bubu = themes.filter(t => t.family === 'bubu'); assert.equal(bubu.length, 9);
-  assert.equal(new Set(bubu.map(t => t.wallpaper!.image)).size, 9);
-  await app!.evaluate(({ net }) => { (globalThis as any).__themeOriginalFetch = net.fetch; net.fetch = async () => new Response('unavailable', { status: 503 }); });
-  await page.getByRole('button', { name: '鬼灭之刃 · 藤袭山', exact: true }).click();
-  await page.getByRole('status', { name: '官方壁纸状态' }).filter({ hasText: 'HTTP 503' }).waitFor();
-  assert.equal(await page.locator('.main-content').evaluate(el => getComputedStyle(el, '::before').backgroundImage), 'none');
-  await app!.evaluate(({ net }) => { net.fetch = (globalThis as any).__themeOriginalFetch; });
-  if (live) {
-    await page.getByRole('button', { name: '重试获取图片', exact: true }).click();
-    await page.getByRole('status', { name: '官方壁纸状态' }).filter({ hasText: '原图已缓存' }).waitFor({ timeout: 30000 });
-    // A late image download may populate its cache but cannot overwrite the
-    // background after the user has switched to another theme.
-    await app!.evaluate(({ net }) => { (globalThis as any).__themeFetches = 0; net.fetch = async (url, options) => { (globalThis as any).__themeFetches++; await new Promise(resolve => setTimeout(resolve, 200)); return (globalThis as any).__themeOriginalFetch(url, options); }; });
-    await page.getByRole('button', { name: '鬼灭之刃 · 狭雾山', exact: true }).click();
-    await page.getByRole('button', { name: '布布一二', exact: true }).click();
-    await poll(page, async () => !!await window.harbor!.themeWallpaper('kimetsu-mist', false));
-    assert.ok(await app!.evaluate(() => (globalThis as any).__themeFetches) > 0);
-    assert.ok((await page.locator('.main-content').evaluate(el => getComputedStyle(el, '::before').backgroundImage)).includes('bubu-yier-cafe'));
-    await app!.evaluate(({ net }) => { net.fetch = (globalThis as any).__themeOriginalFetch; });
-  }
-  const imageThemes = live ? themes.filter(t => t.wallpaper) : bubu;
-  for (const t of imageThemes) {
+  const pictures = themes.filter(t => t.wallpaper); assert.equal(pictures.length, 24);
+  assert.equal(new Set(pictures.map(t => t.wallpaper!.image)).size, 24);
+  assert.equal(pictures.filter(t => t.characterGroup === 'hashira').length, 9);
+  assert.equal(pictures.filter(t => t.characterGroup === 'protagonist').length, 6);
+  assert.equal(await page.evaluate(() => typeof (window.harbor as any).themeWallpaper), 'undefined');
+  for (const t of pictures) {
     const c = t.colors;
     assert.ok(contrast(rgb(c.text), rgb(c.base)) >= 7, `${t.name}: body text`);
     assert.ok(contrast(rgb(c.muted), rgb(c.base)) >= 4.5, `${t.name}: secondary text`);
@@ -70,28 +56,25 @@ try {
     assert.equal(await page.locator('html').getAttribute('data-wallpaper'), 'true');
     assert.equal(await page.locator('html').evaluate(el => getComputedStyle(el).colorScheme), t.light ? 'light' : 'dark');
     const controls = await page.locator('.theme-option').evaluateAll(nodes => nodes.map(el => ({ clipped: el.scrollWidth > el.clientWidth + 1, name: el.getAttribute('aria-label') })));
-    assert.equal(controls.length, 19); assert.ok(controls.every(c => !c.clipped), JSON.stringify(controls));
+    assert.equal(controls.length, 30); assert.ok(controls.every(c => !c.clipped), JSON.stringify(controls));
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
     const slider = page.getByRole('slider', { name: /背景显示强度/ });
     await slider.focus(); await page.keyboard.press('End'); assert.equal(await slider.inputValue(), '35');
     const wallpaper = await page.locator('.main-content').evaluate(el => { const s = getComputedStyle(el, '::before'); return { opacity: s.opacity, image: s.backgroundImage, events: s.pointerEvents }; });
-    assert.equal(wallpaper.opacity, '0.35'); assert.equal(wallpaper.events, 'none');
-    if (t.wallpaper!.remoteId) {
-      await page.getByRole('status', { name: '官方壁纸状态' }).filter({ hasText: '原图已缓存' }).waitFor({ timeout: 30000 });
-    }
+    assert.equal(wallpaper.opacity, '0.35'); assert.ok(wallpaper.image.includes('.jpg')); assert.equal(wallpaper.events, 'none');
     const dimensions = await page.evaluate(() => new Promise<number[]>((resolve, reject) => {
-      const image = new Image(); image.onload = () => resolve([image.naturalWidth, image.naturalHeight]); image.onerror = () => reject(new Error('Background image failed to load'));
+      const image = new Image(); image.onload = () => resolve([image.naturalWidth, image.naturalHeight]); image.onerror = () => reject(new Error('Offline background failed to load'));
       image.src = getComputedStyle(document.documentElement).getPropertyValue('--theme-wallpaper').trim().match(/^url\("(.*)"\)$/)![1];
     }));
-    assert.deepEqual(dimensions, t.family === 'bubu' ? [3840, 2160] : [1280, 720]);
+    assert.deepEqual(dimensions, t.family === 'bubu' ? [3840, 2160] : characterSources.find(source => `kimetsu-${source.id}` === t.id)!.dimensions);
     await slider.focus(); await page.keyboard.press('Home'); assert.equal(await slider.inputValue(), '0');
     assert.equal(await page.locator('.main-content').evaluate(el => getComputedStyle(el, '::before').opacity), '0');
     await page.getByRole('button', { name: '恢复默认', exact: true }).click();
     assert.equal(await slider.inputValue(), '14');
-    if (t.id === 'bubu-strawberry' || t.id === 'bubu-cocoa' || t.id === 'kimetsu-castle') {
+    if (t.id === 'bubu-strawberry' || t.id === 'kimetsu-rengoku') {
       await page.setViewportSize({ width: 1366, height: 1000 });
       await page.locator('.settings-page').evaluate(el => { el.scrollTop = 0; });
-      if (t.family === 'kimetsu') await page.locator('#theme-family-kimetsu').scrollIntoViewIfNeeded();
+      if (t.family === 'kimetsu') await page.locator('#theme-family-kimetsu').evaluate(el => el.scrollIntoView({ block: 'start' }));
       await poll(page, () => [...document.querySelectorAll<HTMLImageElement>('.theme-preview>img')].every(img => img.complete && img.naturalWidth > 0));
       await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
       await page.screenshot({ path: `test-results/50-${t.id}-settings.png` });
@@ -120,35 +103,38 @@ try {
     await poll(page, async id => { const s = (await window.harbor!.initial()).runtime.sessions[0]; return (await window.harbor!.readTerminal(s.id)).data.some(v => atob(v).includes(`echo ${id}`)); }, t.id);
     await page.getByRole('button', { name: '偏好设置', exact: true }).click();
   }
+  await page.setViewportSize({ width: 1366, height: 1250 });
+  for (const [title, name] of [['主角团 · 6 人', 'main-cast'], ['九柱 · 9 人', 'hashira']]) {
+    await page.getByRole('heading', { name: title, exact: true }).evaluate(el => el.scrollIntoView({ block: 'start' }));
+    await page.screenshot({ path: `test-results/54-kimetsu-${name}-offline.png` });
+  }
+  await page.setViewportSize({ width: 1040, height: 700 });
+  for (const [oldId, expected] of Object.entries({ 'kimetsu-wisteria': 'kimetsu-shinobu', 'kimetsu-mist': 'kimetsu-muichiro', 'kimetsu-castle': 'kimetsu-rengoku', 'kimetsu-garden': 'kimetsu-tanjiro' })) {
+    await page.evaluate(id => localStorage.setItem('harbor-theme', id), oldId); await page.reload();
+    await page.getByRole('button', { name: '偏好设置', exact: true }).click();
+    assert.equal(await page.locator('html').getAttribute('data-theme'), expected);
+    assert.ok((await page.locator('.main-content').evaluate(el => getComputedStyle(el, '::before').backgroundImage)).includes('.jpg'));
+  }
   // A saved strength survives switching palettes, including a plain theme.
   const slider = page.getByRole('slider', { name: /背景显示强度/ }); await slider.focus(); await page.keyboard.press('End');
   await page.getByRole('button', { name: '深海绿', exact: true }).click();
   assert.equal(await page.locator('html').getAttribute('data-wallpaper'), 'false');
   assert.equal(await page.locator('.main-content').evaluate(el => getComputedStyle(el, '::before').backgroundImage), 'none');
-  const persistedTheme = live ? 'kimetsu-castle' : 'bubu-cocoa';
-  await page.getByRole('button', { name: live ? '鬼灭之刃 · 无限城' : '布布一二 · 可可夜色', exact: true }).click(); assert.equal(await slider.inputValue(), '35');
-  if (live) {
-    for (const [id, source] of Object.entries(remoteWallpapers)) {
-      const data = await fs.readFile(path.join(directory, 'theme-wallpapers', `${id}-${source.sha256.slice(0, 16)}.jpg`)); assert.equal(data.length, source.bytes);
-    }
-  }
+  await page.getByRole('button', { name: '鬼灭之刃 · 炼狱杏寿郎', exact: true }).click(); assert.equal(await slider.inputValue(), '35');
+  assert.equal(await app!.evaluate(() => (globalThis as any).__themeNetworkRequests), 0);
   await app!.close(); app = undefined; page = await launch();
   await page.getByRole('heading', { name: '欢迎回来', exact: true }).waitFor();
-  if (live) {
-    await app!.evaluate(({ net }) => { (globalThis as any).__themeOfflineFetches = 0; net.fetch = async () => { (globalThis as any).__themeOfflineFetches++; throw new Error('Offline restart'); }; });
-    await page.reload(); await page.getByRole('heading', { name: '欢迎回来', exact: true }).waitFor();
-    await poll(page, () => getComputedStyle(document.documentElement).getPropertyValue('--theme-wallpaper').includes('data:image/jpeg;base64,'));
-    assert.equal(await app!.evaluate(() => (globalThis as any).__themeOfflineFetches), 0);
-  }
-  assert.equal(await page.locator('html').getAttribute('data-theme'), persistedTheme);
+  assert.equal(await page.locator('html').getAttribute('data-theme'), 'kimetsu-rengoku');
   assert.equal(await page.locator('.lock-screen').evaluate(el => getComputedStyle(el, '::before').opacity), '0.35');
-  await page.screenshot({ path: 'test-results/52-picture-theme-unlock.png' });
+  assert.ok((await page.locator('.lock-screen').evaluate(el => getComputedStyle(el, '::before').backgroundImage)).includes('rengoku'));
+  await page.screenshot({ path: 'test-results/52-kimetsu-offline-unlock.png' });
   await page.getByLabel('软件密码', { exact: true }).fill('theme-smoke-password'); await page.getByRole('button', { name: '解锁工作空间' }).click();
   await page.getByRole('button', { name: '偏好设置', exact: true }).click();
   assert.equal(await page.getByRole('slider', { name: /背景显示强度/ }).inputValue(), '35');
   await page.getByRole('button', { name: '布布一二', exact: true }).click(); assert.equal(await page.locator('html').getAttribute('data-theme'), 'bubu-yier');
+  assert.equal(await app!.evaluate(() => (globalThis as any).__themeNetworkRequests), 0);
   assert.deepEqual(errors, []);
-  console.log(`Picture theme desktop verified: ${imageThemes.length} distinct original backgrounds, real SSH output/copy/input, text contrast, 0/14/35% strength, 19 cards at 1040×700/18px, HTTP failure feedback, original-theme compatibility and restart persistence.${live ? ' Also verified 4 live official downloads, retry, late-download isolation, unchanged cached originals and offline login/preview after restart.' : ''}`);
+  console.log('Offline theme desktop verified: 24 different bundled originals including all 9 Hashira and 6 main characters; 30 cards; HTTP/HTTPS blocked with zero requests on first use and restart; real SSH copy/input and readable selections; 0/14/35% strength; 1040×700/18px layout; all 4 old scene IDs migrate; offline login and persistence.');
 } catch (error) {
   if (app) await (await app.firstWindow()).screenshot({ path: 'test-results/53-themes-failure.png' }).catch(() => {});
   console.error('Renderer errors:', errors); throw error;

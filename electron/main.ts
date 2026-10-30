@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, net, safeStorage, shell, type IpcMainInvokeEvent } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, safeStorage, shell, type IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { promises as fs } from 'node:fs';
@@ -12,7 +12,6 @@ import { SnmpService } from './snmp';
 import { NetworkQueryService } from './network-query';
 import type { AppEvent, Profile } from '../shared/types';
 import { listSerialPorts } from './device-terminal';
-import { WallpaperCache } from './wallpapers';
 
 let win: BrowserWindow;
 let store: Store;
@@ -62,8 +61,6 @@ async function verifyHost(profile: Profile, fingerprint: string): Promise<boolea
   try { return await operation; } finally { verifications.delete(key); }
 }
 function registerIPC() {
-  const wallpapers = new WallpaperCache(path.join(app.getPath('userData'), 'theme-wallpapers'), (input, init) => net.fetch(input, init));
-  handle('harbor:theme-wallpaper', (id, download) => wallpapers.read(z.string().max(64).parse(id), z.boolean().parse(download)), false);
   const password = z.string().max(256);
   handle('harbor:lock-status', () => vault.status(), false);
   handle('harbor:password-setup', async raw => { await vault.setup(password.parse(raw)); await store.migrateCredentials(); }, false);

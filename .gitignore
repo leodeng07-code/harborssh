@@ -29,5 +29,5 @@ id_rsa.*
 id_ed25519
 id_ed25519.*
 
-# Downloaded official wallpapers belong only in the local user cache.
+# Legacy wallpaper cache from v0.7.2 (not source assets).
 theme-wallpapers/

@@ -1,6 +1,6 @@
 {
   "name": "harborssh",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "private": true,
   "description": "Harbor SSH — Windows SSH、Telnet、串口与隧道管理工具",
   "author": "Harbor SSH",
@@ -28,8 +28,7 @@
     "test:sidebar": "tsx scripts/sidebar-smoke.ts",
     "test:snmp-probe": "tsx scripts/snmp-probe-smoke.ts",
     "test:protocols": "tsx scripts/device-terminal-smoke.ts",
-    "test:themes": "tsx scripts/themes-smoke.ts",
-    "test:themes:live": "tsx scripts/themes-smoke.ts --live"
+    "test:themes": "tsx scripts/themes-smoke.ts"
   },
   "dependencies": {
     "exceljs": "4.4.0",
