@@ -212,6 +212,20 @@ class ParserTests(unittest.TestCase):
         )
         self.assertEqual(parse_stations(simpler)[0].ssid, "WLAN Test")
 
+    def test_station_online_time_format_and_legacy_status_columns(self):
+        header = "STA MAC AP ID Ap name Rf/WLAN Band Type Rx/Tx RSSI VLAN IP address SSID "
+        row = "02c1-0000-0001 4 Warehouse AP 1/2 5G 11n 45/90 -73 387 192.0.2.43 Fleet WLAN "
+        for columns, values, expected in (
+            ("Online time (DDD:HH:MM:SS)", "006:19:21:59", ""),
+            ("Status", "Normal", "Normal"),
+            ("Online time (DDD:HH:MM:SS) Status", "006:19:21:59 Normal", "Normal"),
+        ):
+            with self.subTest(columns=columns):
+                output = f"{header}{columns}\n--------\n{row}{values}\n--------\nTotal: 1 2.4G: 0 5G: 1\n"
+                self.assertEqual(parse_stations(output), [
+                    Station("02c1-0000-0001", 4, 1, "5G", "45/90", -73, "Fleet WLAN", expected),
+                ])
+
     def test_truncated_or_paged_output_is_rejected(self):
         for output in (STA_OUTPUT.replace("Total: 2", "Total: 3"), STA_OUTPUT + "---- More ----"):
             with self.assertRaises(ValueError):
