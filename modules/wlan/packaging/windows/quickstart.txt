@@ -20,7 +20,7 @@
      按需诊断还会用到 display ap traffic statistics wireless、display station sta-mac、
      display station statistics sta-mac 和 display station offline-record sta-mac。
   3. 在「采集设置」输入管理地址、SSH 端口、账号和密码。
-     旧版已有的设备地址和账号会自动带入。可先配置一台试用，再添加第二台。
+     旧版已有的设备地址和账号会自动带入。暂停采集后可在设置中添加 AC，最多 16 台。
   4. 点击「保存并开始采集」。如果出现 SSH 指纹提示，请向网络管理员核对。
      核对一致后确认。首次采集结果会显示在看板的 AC 采集状态中。
 

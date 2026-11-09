@@ -277,7 +277,8 @@ async function getJSON(url, payload) {
   const options = payload === undefined ? {} : {
     method: "POST", headers: {"Content-Type": "application/json", "X-Wlan-Request": "desktop"}, body: JSON.stringify(payload),
   };
-  const response = await fetch(url, {...options, signal: AbortSignal.timeout(payload === undefined ? 8000 : 65000)});
+  const timeout = payload === undefined ? 8000 : payload.kind === "offline" ? 230000 : 65000;
+  const response = await fetch(url, {...options, signal: AbortSignal.timeout(timeout)});
   const body = await response.json();
   if (!response.ok) throw new Error(body.error || "读取失败");
   return body;
