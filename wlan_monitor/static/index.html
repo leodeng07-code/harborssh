@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>园区无线监测</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/theme.js" defer></script>
+  <script src="/app.js" defer></script>
+</head>
+<body>
+<div class="app-shell">
+  <header class="titlebar">
+    <div class="brand">
+      <span class="brand-symbol"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M6 13a16 16 0 0 1 20 0M10 17a10 10 0 0 1 12 0M13.5 21a4 4 0 0 1 5 0"/><circle cx="16" cy="24" r="1"/></svg></span>
+      <strong>园区无线监测</strong><span class="module-tag">WLAN</span>
+    </div>
+    <div class="toolbar">
+      <span id="mode" class="mode">正在载入</span>
+      <button id="refresh" class="button" type="button" title="读取本机最新采样">↻ 刷新</button>
+      <a href="/settings" id="settings-link" class="button" hidden>采集设置</a>
+    </div>
+  </header>
+  <div class="app-body">
+    <aside class="sidebar">
+      <div class="section-label">工作区</div>
+      <nav aria-label="无线监测模块">
+        <button type="button" class="nav-item" data-view="overview" aria-current="page">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 19h18M6 15v-4m6 4V5m6 10V8"/></svg><span>问题总览</span>
+        </button>
+        <button type="button" class="nav-item" data-view="inventory">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8a14 14 0 0 1 18 0M6 12a10 10 0 0 1 12 0m-9 4a5 5 0 0 1 6 0"/><circle cx="12" cy="20" r="1"/></svg><span>AP 排查</span><small id="issue-count">—</small>
+        </button>
+        <button type="button" class="nav-item" data-view="events">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 7v5l4 2"/></svg><span>掉线记录</span>
+        </button>
+      </nav>
+      <div class="section-label source-label">AC 采集状态</div>
+      <div id="sources" class="sources"></div>
+    </aside>
+    <main class="workspace">
+      <div class="workspace-bar"><span>无线运维 <span aria-hidden="true">/</span> <strong id="breadcrumb">问题总览</strong></span><span id="timestamp">等待采样</span></div>
+      <div id="message" class="notice" role="status" hidden></div>
+      <div class="view-scroll">
+        <section id="view-overview" class="view">
+          <div class="view-heading"><div><h1>问题总览</h1><p class="muted">查看异常范围，结合终端信号、空口利用率与 AP 状态排查。</p></div></div>
+          <section id="cards" class="stats-strip" aria-label="本轮采样摘要"></section>
+          <section class="panel analysis-panel ac-ha" aria-labelledby="ac-ha-title">
+            <header><h2 id="ac-ha-title">AC 主备状态</h2><span class="muted" id="ac-ha-sample">等待采样</span></header>
+            <div id="ac-ha-status" class="ha-grid"></div>
+          </section>
+          <div class="analysis-grid">
+            <section class="panel analysis-panel" aria-labelledby="distribution-title">
+              <header><h2 id="distribution-title">问题分布</h2><span class="muted">本轮 · 按 AP 计</span></header>
+              <div id="distribution" class="distribution"></div>
+              <p class="panel-note muted" id="rule"></p>
+            </section>
+            <section class="panel analysis-panel" aria-labelledby="trend-title">
+              <header><h2 id="trend-title">变化趋势</h2><span class="muted">近 24 小时</span></header>
+              <div id="trend"></div>
+            </section>
+          </div>
+          <section class="panel analysis-panel" aria-labelledby="queue-title">
+            <header><h2 id="queue-title">优先排查</h2><button id="open-inventory" type="button" class="text-button">打开 AP 排查 →</button></header>
+            <div id="queue"></div>
+          </section>
+        </section>
+        <section id="view-inventory" class="view" hidden>
+          <div class="view-heading"><div><h1>AP 排查</h1><p class="muted" id="result-count">等待采样</p></div></div>
+          <div class="filterbar">
+            <input id="search" type="search" placeholder="搜索 AP、位置或分组" aria-label="搜索 AP、位置或分组">
+            <select id="filter" aria-label="按问题筛选">
+              <option value="all">全部问题类型</option><option value="weak">弱信号</option>
+              <option value="busy">空口繁忙</option><option value="inactive">未在服务</option><option value="pending">数据待核</option>
+            </select>
+            <label class="checkbox"><input type="checkbox" id="hide-healthy" checked>隐藏无异常 AP</label>
+          </div>
+          <div class="inventory-split" id="inventory-split">
+            <section class="panel inventory">
+              <div class="table-scroll"><table>
+                <thead><tr><th>AP / 位置</th><th>终端</th><th>弱信号</th><th>最高利用率</th><th>问题</th></tr></thead>
+                <tbody id="inventory"></tbody>
+              </table></div>
+            </section>
+            <aside id="details" class="panel details" aria-labelledby="ap-title" hidden>
+              <header class="details-head"><div><h2 id="ap-title">AP</h2><p id="ap-subtitle" class="muted"></p></div><button id="close-details" class="button" type="button" aria-label="关闭详情">×</button></header>
+              <div id="ap-content"></div>
+            </aside>
+          </div>
+        </section>
+        <section id="view-events" class="view" hidden>
+          <div class="view-heading"><div><h1>掉线记录</h1><p class="muted">AC 下线记录保留设备时间。疑似离线显示最后在线到首次未见的区间。</p></div></div>
+          <div class="filterbar">
+            <form id="event-form" class="inline-form"><input id="event-mac" type="search" placeholder="终端 MAC" aria-label="按终端 MAC 查询掉线记录"><button type="submit" id="event-query" class="button primary" hidden>查询 AC</button></form>
+            <select id="event-filter" aria-label="按记录类型筛选">
+              <option value="all">所有记录</option><option value="ap">AP 下线</option><option value="station">终端下线</option><option value="station_missing">疑似离线</option>
+            </select>
+          </div>
+          <p id="event-feedback" class="muted event-feedback" role="status"></p>
+          <section class="panel"><div class="table-scroll"><table>
+            <thead><tr><th>记录类型</th><th>时间 / 区间</th><th>AP / MAC</th><th>AC</th><th>原因</th></tr></thead>
+            <tbody id="events"></tbody>
+          </table></div></section>
+        </section>
+      </div>
+    </main>
+  </div>
+  <footer class="statusbar"><span id="status">本机数据</span><span>RSSI 为 AP 接收到的终端信号</span></footer>
+</div>
+</body>
+</html>
