@@ -23,19 +23,21 @@ from paramiko import HostKeys, SSHException, Transport
 
 from secrets_dpapi import protect, unprotect
 from wlan_monitor import diagnostics
-from wlan_monitor.__main__ import collect_loop, make_handler, parse_config
+from wlan_monitor.__main__ import AC_WORKERS, collect_loop, make_handler, parse_config
 from wlan_monitor.huawei import AUTH_REJECTED, QueryError
 from wlan_monitor.store import Store
 
 
 ASSETS = Path(__file__).with_name("gui")
 DEVICE_FIELDS = ("name", "host", "port", "username")
+MAX_DEVICES = 16
+MAX_SETTINGS_BYTES = 128 * 1024
 HOST = re.compile(r"[a-zA-Z0-9](?:[a-zA-Z0-9.-]{0,251}[a-zA-Z0-9.])?")
 
 
 def device_settings(raw):
-    if not isinstance(raw, list) or not 1 <= len(raw) <= 2:
-        raise ValueError("请选择一台或两台 AC")
+    if not isinstance(raw, list) or not 1 <= len(raw) <= MAX_DEVICES:
+        raise ValueError(f"请配置 1 至 {MAX_DEVICES} 台 AC")
     devices = []
     for index, entry in enumerate(raw, 1):
         if not isinstance(entry, dict):
@@ -61,9 +63,9 @@ def device_settings(raw):
         device["port"] = port
         devices.append(device)
     if len({device["name"] for device in devices}) != len(devices):
-        raise ValueError("两台 AC 的显示名称需要不同")
+        raise ValueError("每台 AC 的显示名称需要不同")
     if len({host_id(device) for device in devices}) != len(devices):
-        raise ValueError("两台 AC 的管理地址和 SSH 端口不能相同")
+        raise ValueError("AC 的管理地址和 SSH 端口组合不能重复")
     return devices
 
 
@@ -145,6 +147,7 @@ class Desktop:
                 "error": self.error,
                 "intervalSeconds": self.settings.get("interval_seconds", 300),
                 "intervalUnit": self.settings.get("interval_unit"),
+                "maxDevices": MAX_DEVICES,
                 "devices": [
                     {**{field: d.get(field) for field in DEVICE_FIELDS}, "saved": bool(d.get("password_dpapi"))}
                     for d in self.settings.get("ac", []) if isinstance(d, dict)
@@ -242,7 +245,7 @@ class Desktop:
                         return diagnostics.station_offline(device, passwords[name], mac)
                     except QueryError as exc:
                         return {"ac": name, "events": [], "error": str(exc)}
-                with ThreadPoolExecutor(max_workers=2) as pool:
+                with ThreadPoolExecutor(max_workers=AC_WORKERS) as pool:
                     results = list(pool.map(read_events, targets))
                 if any(result["error"] == AUTH_REJECTED for result in results):
                     self.stop()
@@ -278,7 +281,7 @@ class Desktop:
         with self.lock:
             self.require_stopped()
             old = {} if recheck else {host_id(d): d["host_key"] for d in self.settings.get("ac", []) if d.get("host_key")}
-        with ThreadPoolExecutor(max_workers=2) as pool:
+        with ThreadPoolExecutor(max_workers=AC_WORKERS) as pool:
             results = list(pool.map(lambda device: probe(device, old, self.legacy_hosts), devices))
         with self.lock:
             self.require_stopped()
@@ -384,7 +387,8 @@ def make_desktop_handler(desktop, secret):
                 return
             try:
                 length = int(self.headers.get("Content-Length", "0"))
-                if not 0 < length <= 16384:
+                limit = MAX_SETTINGS_BYTES if self.path in {"/api/desktop/prepare", "/api/desktop/save"} else 16384
+                if not 0 < length <= limit:
                     raise ValueError("请求大小无效")
                 request = json.loads(self.rfile.read(length))
                 if not isinstance(request, dict):

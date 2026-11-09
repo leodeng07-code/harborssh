@@ -21,7 +21,9 @@ async function call(path, payload) {
     headers: {"Content-Type": "application/json", "X-Wlan-Request": "desktop"},
     body: JSON.stringify(payload),
   };
-  const response = await fetch("/api/desktop" + path, {...options, signal: AbortSignal.timeout(20000)});
+  const response = await fetch("/api/desktop" + path, {
+    ...options, signal: AbortSignal.timeout(path === "/prepare" ? 95000 : 20000),
+  });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || "操作失败");
   return data;
@@ -37,12 +39,17 @@ function renumber() {
     card.querySelector(".device-title").textContent = `第 ${i + 1} 台 AC`;
     card.querySelector(".remove").hidden = list.children.length === 1;
   });
-  $("add").hidden = list.children.length >= 2;
+  $("add").disabled = list.children.length >= state.maxDevices;
+  $("device-count").textContent = `已添加 ${list.children.length} / ${state.maxDevices} 台 AC`;
 }
 
 function addDevice(device = {}) {
+  if (list.children.length >= state.maxDevices) return;
   const card = $("device-template").content.firstElementChild.cloneNode(true);
-  const defaults = {name: list.children.length ? "AC-02" : "AC-01", host: "", port: 22, username: ""};
+  const usedNames = new Set([...list.querySelectorAll("[name=name]")].map(input => input.value.trim()));
+  let index = 1;
+  while (usedNames.has(`AC-${String(index).padStart(2, "0")}`)) index++;
+  const defaults = {name: `AC-${String(index).padStart(2, "0")}`, host: "", port: 22, username: ""};
   for (const key of Object.keys(defaults)) {
     card.querySelector(`[name=${key}]`).value = device[key] ?? defaults[key];
   }

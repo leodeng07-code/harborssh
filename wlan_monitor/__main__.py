@@ -15,6 +15,7 @@ from .store import Policy, Store
 
 STATIC = Path(__file__).with_name("static")
 DEFAULT_PORT = 8765
+AC_WORKERS = 4
 
 
 def load_config(path):
@@ -47,7 +48,7 @@ def parse_config(config):
 
 def collect_round(store, devices, policy, interval, days, *, passwords=None, stop_on_auth=None):
     passwords = passwords or {}
-    with ThreadPoolExecutor(max_workers=min(2, len(devices))) as pool:
+    with ThreadPoolExecutor(max_workers=AC_WORKERS) as pool:
         snapshots = list(pool.map(lambda device: huawei.collect(device, password=passwords.get(device["name"])), devices))
     if stop_on_auth is not None and any(s.error == huawei.AUTH_REJECTED for s in snapshots):
         stop_on_auth.set()

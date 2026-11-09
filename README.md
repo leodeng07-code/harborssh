@@ -4,7 +4,7 @@
 
 ## Windows 10/11 图形便携版
 
-完整解压 `WlanMonitor-Windows-x64.zip`，双击 `WlanMonitor.exe`。在窗口的「采集设置」保存一台或两台 AC 的只读 SSH 账号和密码。首次连接新设备时，按窗口提示与管理员核对 SSH 主机指纹。旧版配置的地址、端口和用户名会带入设置。
+完整解压 `WlanMonitor-Windows-x64.zip`，双击 `WlanMonitor.exe`。在窗口的「采集设置」保存 1 至 16 台 AC 的只读 SSH 账号和密码。首次连接新设备时，按窗口提示与管理员核对 SSH 主机指纹。旧版配置的地址、端口和用户名会带入设置。
 
 密码由 Windows DPAPI 为当前用户加密。以后打开应用会自动开始采集，最小化时继续运行，关闭窗口时结束。配置与 SQLite 数据保存在 `%LOCALAPPDATA%\WlanMonitor`，旧版历史数据可沿用。窗口使用 Microsoft Edge WebView2，缺少运行环境时可打开包内的 Microsoft 安装程序。
 

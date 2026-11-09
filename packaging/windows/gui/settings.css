@@ -24,6 +24,7 @@
 .help { margin-top: 10px; }
 #feedback { margin-bottom: 10px; }
 #trust { width: min(560px, calc(100vw - 30px)); }
+#fingerprints { max-height: 55vh; overflow: auto; }
 #trust .actions { margin-top: 12px; }
 .key-card { background: var(--inset); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; margin-top: 8px; }
 .key-card code { display: block; margin-top: 4px; overflow-wrap: anywhere; }
