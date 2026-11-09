@@ -4,7 +4,7 @@ import path from 'node:path';
 import { WLAN_ORIGIN, WLAN_SCHEME } from '../shared/wlan';
 
 protocol.registerSchemesAsPrivileged([
-  { scheme: WLAN_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } },
+  { scheme: WLAN_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
 ]);
 
 const reads = new Set(['/', '/open', '/settings', '/app.js', '/theme.js', '/styles.css', '/settings.js', '/settings.css',
@@ -75,7 +75,9 @@ export function registerWlanProtocol(devURL?: string) {
     const target = endpoint;
     if (!target || source.host !== 'monitor' || source.username || source.password) return new Response(null, { status: 403 });
     const post = request.method === 'POST';
-    if (post ? !writes.has(source.pathname) || request.headers.get('origin') !== WLAN_ORIGIN
+    // Chromium omits Origin on same-scheme requests. Cross-origin requests carrying this
+    // header must preflight, and only the declared GET/POST routes are accepted.
+    if (post ? !writes.has(source.pathname) || request.headers.get('x-wlan-request') !== 'desktop'
       : request.method !== 'GET' || !reads.has(source.pathname)) return new Response(null, { status: 403 });
     const token = target.searchParams.get('token')!;
     const remote = source.pathname === '/open' ? target : new URL(source.pathname + source.search, target);

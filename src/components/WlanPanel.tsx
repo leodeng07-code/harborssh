@@ -16,8 +16,8 @@ export function WlanPanel({ active, theme }: { active: boolean; theme: ThemeId }
   useEffect(() => { if (isDesktop) open(); }, []);
 
   function syncTheme() {
-    const { colors, light } = getTheme(theme);
-    frame.current?.contentWindow?.postMessage({ type: 'harbor-wlan-theme', colors, light }, WLAN_ORIGIN);
+    const { colors, light, wallpaper } = getTheme(theme);
+    frame.current?.contentWindow?.postMessage({ type: 'harbor-wlan-theme', colors, light, wallpaper: !!wallpaper }, WLAN_ORIGIN);
   }
 
   useEffect(syncTheme, [theme]);
