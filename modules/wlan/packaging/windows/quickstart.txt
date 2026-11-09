@@ -1,0 +1,46 @@
+园区无线信号监测 · Windows 10/11 64 位
+
+首次打开
+  1. 完整解压 ZIP，保留 app 和 runtime 文件夹。
+  2. 双击 WlanMonitor.exe。采集设置和看板都在应用窗口内。
+  3. 如果系统提示缺少 Microsoft Edge WebView2，可以打开包内的
+     MicrosoftEdgeWebview2Setup.exe 安装。安装后重新打开应用。
+
+接入园区 AC
+  1. 确认 Windows 电脑能通过管理网络或 VPN 访问 AC 的 SSH 端口。
+  2. 请网络管理员为每台 AC 分配专用只读 SSH 账号。该账号需能执行以下命令。
+     screen-length 0 temporary
+     display ap all
+     display station all
+     display radio all
+     display ap offline-record all
+     射频或下线记录失败时，仍可采集 AP 和终端数据。
+     主备状态另需 display ac protect、display hsb-group 0 和 display hsb-service 0。
+     如果热备组回显指定了服务编号，软件会改用该编号查询 HSB 通道。
+     按需诊断还会用到 display ap traffic statistics wireless、display station sta-mac、
+     display station statistics sta-mac 和 display station offline-record sta-mac。
+  3. 在「采集设置」输入管理地址、SSH 端口、账号和密码。
+     旧版已有的设备地址和账号会自动带入。可先配置一台试用，再添加第二台。
+  4. 点击「保存并开始采集」。如果出现 SSH 指纹提示，请向网络管理员核对。
+     核对一致后确认。首次采集结果会显示在看板的 AC 采集状态中。
+
+持续运行
+  应用默认每 5 分钟批量查询每台 AC，按 AP MAC 合并双 AC 主备清单。
+  密码由 Windows DPAPI 为当前 Windows 用户加密。下次使用同一 Windows 用户
+  打开应用时会自动登录采集。可在「采集设置」暂停、恢复或更新凭据。
+  若 AC 拒绝账号或密码，自动暂停，修正后可以恢复采集。
+  最小化时继续采集。关闭窗口或电脑休眠时，采集会中断。
+
+无线排查
+  「问题总览」显示问题分布和近 24 小时变化。点击分类进入「AP 排查」。
+  「AC 主备状态」显示 VRRP 主用或备用、HSB 通道和各台 AC 的正常注册与备用 AP 数。
+  双链路按 AP 注册状态区分。回显不足时显示「角色待核」，并列出未取得状态的命令。
+  默认隐藏未见异常的 AP，取消勾选可看全部。点击 AP 后可读取射频和终端详情。
+  「掉线记录」显示 AC 报告的 AP 下线及疑似离线终端。输入终端 MAC 可按需查 AC 记录。
+
+数据和设置
+  配置与 SQLite 数据保存在 %LOCALAPPDATA%\WlanMonitor。
+  图形版配置文件为 desktop.json，历史数据沿用 wlan.sqlite。
+  只读账号密码以 DPAPI 加密形式存储。换电脑或 Windows 用户后需重新输入。
+  AC 主机密钥经管理员确认更换后，可暂停采集并勾选「重新核对 SSH 指纹」。
+  看板只监听本机回环地址，RSSI 为 AP 收到在线终端信号的强度。

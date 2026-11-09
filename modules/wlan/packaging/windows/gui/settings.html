@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>采集设置 · 园区无线信号监测</title>
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/settings.css">
+  <script src="/theme.js" defer></script>
+  <script src="/settings.js" defer></script>
+</head>
+<body>
+  <header class="top">
+    <div class="top-inner">
+      <a href="/" class="brand">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><path d="M6 13a16 16 0 0 1 20 0M10 17a10 10 0 0 1 12 0M13.5 21a4 4 0 0 1 5 0"/><circle cx="16" cy="24" r="1"/></svg>
+        园区无线监测
+      </a>
+      <a class="nav-link" href="/">信号看板 <span aria-hidden="true">→</span></a>
+    </div>
+  </header>
+  <main class="frame settings">
+    <p class="eyebrow">无线运维 / 设备连接</p>
+    <h1>采集设置</h1>
+    <p class="muted">录入 AC 的管理地址和只读 SSH 账号。保存后，每次打开应用都会自动开始采集。</p>
+    <section class="panel collector" aria-labelledby="collector-title">
+      <div>
+        <h2 id="collector-title">采集服务</h2>
+        <p id="service-description" class="muted">正在读取本机设置…</p>
+      </div>
+      <div class="actions"><span id="service-state" class="badge" role="status"></span><button type="button" id="toggle" hidden>暂停采集</button></div>
+    </section>
+    <div id="feedback" class="notice warn" role="alert" hidden></div>
+    <form id="config" method="post" autocomplete="off">
+      <fieldset id="form-fields" disabled>
+        <section class="panel interval-settings" aria-labelledby="interval-title">
+          <div>
+            <h2 id="interval-title">AP 采样周期</h2>
+            <p class="muted" id="interval-hint">15 秒至 24 小时。暂停采集后可修改。</p>
+          </div>
+          <div class="interval-inputs">
+            <input id="interval-value" aria-label="采样周期数值" aria-describedby="interval-hint" type="number" step="1" required>
+            <select id="interval-unit" aria-label="采样周期单位"><option value="seconds">秒</option><option value="minutes">分钟</option></select>
+          </div>
+        </section>
+        <div id="devices"></div>
+        <div class="form-footer">
+          <div>
+            <button type="button" id="add">＋ 添加第二台 AC</button>
+            <label id="refresh-key-wrap" class="checkbox" hidden><input id="refresh-key" type="checkbox">重新核对 SSH 指纹</label>
+          </div>
+          <button class="primary" type="submit" id="save">保存并开始采集</button>
+        </div>
+      </fieldset>
+    </form>
+    <p class="muted help">密码由 Windows 为当前用户加密。应用最小化后继续采集，关闭窗口会结束本次运行。</p>
+  </main>
+  <template id="device-template">
+    <fieldset class="panel device">
+      <legend>AC 设备</legend>
+      <div class="device-head">
+        <h2 class="device-title"></h2>
+        <button type="button" class="remove" aria-label="移除此 AC">移除</button>
+      </div>
+      <div class="fields">
+        <label>显示名称<input name="name" maxlength="253" placeholder="如 AC-01" required></label>
+        <label>管理 IP 或主机名<input name="host" maxlength="253" placeholder="如 192.0.2.11" required></label>
+        <label>SSH 端口<input name="port" type="number" min="1" max="65535" required></label>
+        <label>SSH 用户名<input name="username" maxlength="253" required></label>
+        <label>SSH 密码<input name="password" type="password" maxlength="1024" autocomplete="off"></label>
+      </div>
+    </fieldset>
+  </template>
+  <dialog id="trust" aria-labelledby="trust-title">
+    <h2 id="trust-title">核对 AC 的 SSH 主机指纹</h2>
+    <p class="muted">请与网络管理员提供的指纹核对。确认一致后，应用才会保存指纹并用密码登录。</p>
+    <div id="fingerprints"></div>
+    <form method="dialog" class="actions">
+      <button value="cancel" autofocus>返回</button>
+      <button class="primary" value="trust">指纹一致，继续</button>
+    </form>
+  </dialog>
+</body>
+</html>

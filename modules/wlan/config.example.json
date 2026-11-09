@@ -1,0 +1,29 @@
+{
+  "interval_seconds": 300,
+  "history_days": 30,
+  "policy": {
+    "weak_rssi": -75,
+    "critical_rssi": -82,
+    "min_weak": 3,
+    "min_percent": 20,
+    "consecutive": 3,
+    "high_cu": 60
+  },
+  "ac": [
+    {
+      "name": "AC-01",
+      "host": "192.0.2.11",
+      "username": "wlan-monitor",
+      "password_env": "WLAN_AC1_PASSWORD"
+    },
+    {
+      "name": "AC-02",
+      "host": "192.0.2.12",
+      "username": "wlan-monitor",
+      "password_env": "WLAN_AC2_PASSWORD"
+    }
+  ],
+  "locations": {
+    "02aa-bb00-0001": "示例 · B1 二层办公区"
+  }
+}
