@@ -2,10 +2,10 @@
 
 const $ = id => document.getElementById(id);
 const categories = {
-  weak: {label: "弱信号", color: "#efa4b2", hint: "至少一台终端达到弱信号阈值"},
-  busy: {label: "空口繁忙", color: "#e0bd83", hint: "至少一个射频达到利用率门槛"},
-  inactive: {label: "未在服务", color: "#91b9ed", hint: "本轮未在 AC 上正常注册"},
-  pending: {label: "数据待核", color: "#bda6eb", hint: "信号、射频或归属信息缺失"},
+  weak: {label: "弱信号", color: "var(--rose)", hint: "至少一台终端达到弱信号阈值"},
+  busy: {label: "空口繁忙", color: "var(--amber)", hint: "至少一个射频达到利用率门槛"},
+  inactive: {label: "未在服务", color: "var(--blue)", hint: "本轮未在 AC 上正常注册"},
+  pending: {label: "数据待核", color: "var(--violet)", hint: "信号、射频或归属信息缺失"},
 };
 const labels = {overview: "问题总览", inventory: "AP 排查", events: "掉线记录"};
 const statuses = {running: "采集中", stopping: "正在暂停", stopped: "已暂停"};
@@ -275,7 +275,7 @@ function renderInventory() {
 }
 async function getJSON(url, payload) {
   const options = payload === undefined ? {} : {
-    method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload),
+    method: "POST", headers: {"Content-Type": "application/json", "X-Wlan-Request": "desktop"}, body: JSON.stringify(payload),
   };
   const response = await fetch(url, {...options, signal: AbortSignal.timeout(payload === undefined ? 8000 : 65000)});
   const body = await response.json();
@@ -384,7 +384,7 @@ function apTrend(history, at, days, policy, interval, field) {
       : (share == null ? null : sample.p10);
     return {at: sample.at, value};
   });
-  return lineChart([{points, color: "#69d6b7"}], {
+  return lineChart([{points, color: "var(--accent)"}], {
     at, days, interval, ticks: weak ? [0, 25, 50, 75, 100] : [-130, -104, -78, -52, -26, 0],
     unit: weak ? "%" : "", limit: weak ? policy.min_percent : policy.weak_rssi,
     title: weak ? "弱信号终端占比" : "P10 RSSI",

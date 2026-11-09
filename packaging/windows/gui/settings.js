@@ -18,7 +18,7 @@ function intervalBounds() {
 async function call(path, payload) {
   const options = payload === undefined ? {} : {
     method: "POST",
-    headers: {"Content-Type": "application/json"},
+    headers: {"Content-Type": "application/json", "X-Wlan-Request": "desktop"},
     body: JSON.stringify(payload),
   };
   const response = await fetch("/api/desktop" + path, {...options, signal: AbortSignal.timeout(20000)});
