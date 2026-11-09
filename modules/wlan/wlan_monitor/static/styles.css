@@ -26,6 +26,7 @@
   color: var(--text);
   background: var(--inset);
 }
+:root[data-harbor-wallpaper=true] { background: transparent; }
 * { box-sizing: border-box; }
 body, h1, h2, h3, p, dl, dd { margin: 0; }
 h1 { font-size: 22px; font-weight: 650; letter-spacing: .02em; }
