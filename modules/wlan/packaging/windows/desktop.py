@@ -371,7 +371,9 @@ def make_desktop_handler(desktop, secret):
             elif url.path == "/api/desktop":
                 self.json(desktop.state())
             elif url.path == "/api/dashboard":
-                self.json({"demo": False, "desktop": desktop.state()["state"], "diagnostics": desktop.ready(), "snapshot": desktop.store.read()})
+                state = desktop.state()
+                self.json({"demo": False, "desktop": state["state"], "intervalSeconds": state["intervalSeconds"],
+                           "diagnostics": desktop.ready(), "snapshot": desktop.store.read()})
             else:
                 super().do_GET()
 

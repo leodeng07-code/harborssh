@@ -294,9 +294,11 @@ async function refresh() {
     $("mode").className = `mode ${data.demo ? "demo" : ""}`;
     $("settings-link").hidden = !data.desktop;
     $("event-query").hidden = !canDiagnose;
+    const interval = data.intervalSeconds ?? snapshot?.interval;
+    if (data.desktop === "running" && interval) delay = Math.min(delay, interval * 500);
     if (data.desktop === "running" && (!snapshot || snapshot.stale)) delay = 2500;
     $("timestamp").textContent = snapshot ? `${snapshot.stale ? "历史采样" : "最近采样"} · ${date(snapshot.at)}` : "等待采样";
-    $("status").textContent = snapshot ? `本地数据 · 每 ${snapshot.interval} 秒采样` : "本地数据";
+    $("status").textContent = interval ? `本地数据 · 每 ${interval} 秒采样` : "本地数据";
     const problems = [];
     if (snapshot?.stale) problems.push("采样已过期，当前显示历史结果。");
     const failures = snapshot?.controllers.filter(ac => ac.error).length || 0;
