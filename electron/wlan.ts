@@ -82,16 +82,19 @@ export function registerWlanProtocol(devURL?: string) {
     const token = target.searchParams.get('token')!;
     const remote = source.pathname === '/open' ? target : new URL(source.pathname + source.search, target);
     const headers: Record<string, string> = { Cookie: `wlan_${token.slice(0, 8)}=${token}` };
+    const settingsWrite = source.pathname === '/api/desktop/prepare' || source.pathname === '/api/desktop/save';
+    const maxBodyBytes = settingsWrite ? 128 * 1024 : 16384;
+    const timeout = source.pathname === '/api/diagnostics' ? 240000 : settingsWrite ? 100000 : 70000;
     let body: string | undefined;
     if (post) {
       if (request.headers.get('content-type') !== 'application/json') return new Response(null, { status: 415 });
       body = await request.text();
-      if (Buffer.byteLength(body) > 16384) return new Response(null, { status: 413 });
+      if (Buffer.byteLength(body) > maxBodyBytes) return new Response(null, { status: 413 });
       headers['Content-Type'] = 'application/json';
       headers.Origin = target.origin;
     }
     try {
-      const response = await fetch(remote, { method: request.method, headers, body, redirect: 'manual', signal: AbortSignal.timeout(70000) });
+      const response = await fetch(remote, { method: request.method, headers, body, redirect: 'manual', signal: AbortSignal.timeout(timeout) });
       const next = response.headers.get('location');
       if (source.pathname === '/open' && response.status === 303 && (next === '/' || next === '/settings')) {
         return Response.redirect(WLAN_ORIGIN + next, 303);

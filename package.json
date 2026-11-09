@@ -1,6 +1,6 @@
 {
   "name": "harborssh",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "private": true,
   "description": "Harbor SSH — Windows SSH、Telnet、串口与隧道管理工具",
   "author": "Harbor SSH",
