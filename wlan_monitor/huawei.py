@@ -12,6 +12,7 @@ TOTAL = re.compile(r"^\s*Total\s*:\s*(\d+)\b", re.MULTILINE | re.IGNORECASE)
 USER_PROMPT = r"^[ \t]*<[^<>\r\n]+>[ \t]*\r?$"
 AUTH_REJECTED = "SSH 账号或密码验证失败"
 STA_HEADER = re.compile(r"^\s*STA MAC\s+AP ID\s+AP name\b.*$", re.MULTILINE | re.IGNORECASE)
+STA_SUFFIX_COLUMN = re.compile(r"IPv6 address|Online time(?:[ \t]*\(DDD:HH:MM:SS\))?|Status", re.I)
 AP_HEADER = re.compile(r"^\s*ID\s+MAC\s+Name\s+Group\s+IP\s+Type\s+State\b.*$", re.MULTILINE | re.IGNORECASE)
 RADIO_HEADER = re.compile(
     r"^[ \t]*AP ID[ \t]+(?:AP )?Name[ \t]+RfID[ \t]+Band[ \t]+Type[ \t]+"
@@ -145,8 +146,8 @@ def parse_stations(output, allow_empty_without_total=False):
         raise ValueError("display station all 表头缺少 SSID")
     before, after = layout
     ip_columns = 2 if re.search(r"\bIPv6\b", before, re.I) else 1
-    suffix_columns = re.findall(r"IPv6 address|Online time|Status", after, re.I)
-    if re.sub(r"IPv6 address|Online time|Status", "", after, flags=re.I).strip():
+    suffix_columns = STA_SUFFIX_COLUMN.findall(after)
+    if STA_SUFFIX_COLUMN.sub("", after).strip():
         raise ValueError("display station all 的 SSID 后有未知列")
     stations = []
     for index, line in enumerate(lines, 1):
