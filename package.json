@@ -1,6 +1,6 @@
 {
   "name": "harborssh",
-  "version": "0.7.3",
+  "version": "0.8.0",
   "private": true,
   "description": "Harbor SSH — Windows SSH、Telnet、串口与隧道管理工具",
   "author": "Harbor SSH",
@@ -12,7 +12,7 @@
     "build": "tsc --noEmit && node scripts/build.mjs",
     "preview": "vite --host 127.0.0.1",
     "test": "tsx --test tests/*.test.ts",
-    "dist:win": "npm run build && electron-builder --win dir --x64 && node scripts/portable.mjs && node scripts/installer.mjs",
+    "dist:win": "npm run build && node scripts/wlan-runtime.mjs && electron-builder --win dir --x64 && node scripts/portable.mjs && node scripts/installer.mjs",
     "dist:linux": "npm run build && electron-builder --linux dir",
     "check": "tsc --noEmit",
     "test:ui": "node scripts/smoke.mjs",
@@ -58,7 +58,13 @@
       ],
       "icon": "assets/icon.ico",
       "signAndEditExecutable": false,
-      "artifactName": "HarborSSH-${version}-windows-${arch}.${ext}"
+      "artifactName": "HarborSSH-${version}-windows-${arch}.${ext}",
+      "extraResources": [
+        {
+          "from": ".local/wlan-win",
+          "to": "wlan"
+        }
+      ]
     },
     "nsis": {
       "oneClick": false,

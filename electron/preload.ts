@@ -8,6 +8,7 @@ const api: DesktopAPI = {
   setupPassword: password => ipcRenderer.invoke('harbor:password-setup', password),
   unlock: password => ipcRenderer.invoke('harbor:unlock', password),
   changePassword: (current, next) => ipcRenderer.invoke('harbor:password-change', current, next),
+  openWlan: () => ipcRenderer.invoke('harbor:wlan-open'),
   initial: () => ipcRenderer.invoke('harbor:initial'),
   saveProfile: input => ipcRenderer.invoke('harbor:profile-save', input),
   deleteProfile: id => ipcRenderer.invoke('harbor:profile-delete', id),

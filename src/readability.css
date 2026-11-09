@@ -296,3 +296,7 @@
 .form-body>label,.form-row>label { min-width:0 }
 .form-body .input-with-button>input { min-width:0 }
 .form-body .field-hint { overflow-wrap:anywhere;white-space:normal }
+
+.wlan-workspace { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.wlan-workspace[hidden] { display: none; }
+.wlan-frame { display: block; flex: 1; min-height: 0; width: 100%; border: 0; }

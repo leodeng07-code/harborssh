@@ -12,6 +12,8 @@ import { SnmpService } from './snmp';
 import { NetworkQueryService } from './network-query';
 import type { AppEvent, Profile } from '../shared/types';
 import { listSerialPorts } from './device-terminal';
+import { openWlan, registerWlanProtocol, stopWlan } from './wlan';
+import { WLAN_ORIGIN } from '../shared/wlan';
 
 let win: BrowserWindow;
 let store: Store;
@@ -66,6 +68,7 @@ function registerIPC() {
   handle('harbor:password-setup', async raw => { await vault.setup(password.parse(raw)); await store.migrateCredentials(); }, false);
   handle('harbor:unlock', async raw => { await vault.unlock(password.parse(raw)); await store.migrateCredentials(); }, false);
   handle('harbor:password-change', (current, next) => vault.changePassword(password.parse(current), password.parse(next)));
+  handle('harbor:wlan-open', openWlan);
   handle('harbor:initial', () => ({ config: store.config(), runtime: manager.snapshot(), version: app.getVersion(), secureStorage: vault.available(), platform: process.platform }));
   handle('harbor:profile-save', input => store.saveProfile(profileInputSchema.parse(input)));
   handle('harbor:profile-delete', async raw => { const id = idSchema.parse(raw); await manager.closeProfile(id); return store.deleteProfile(id); });
@@ -200,6 +203,9 @@ async function createWindow() {
   win.on('show', () => visibility(!win.isMinimized())); win.on('restore', () => visibility(win.isVisible()));
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', event => event.preventDefault());
+  win.webContents.on('will-frame-navigate', details => {
+    if (!details.isMainFrame && !details.url.startsWith(WLAN_ORIGIN + '/')) details.preventDefault();
+  });
   win.webContents.session.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
   win.webContents.session.setPermissionCheckHandler(() => false);
   win.once('ready-to-show', () => win.show());
@@ -225,7 +231,7 @@ else {
   void app.whenReady().then(async () => {
     vault = new Vault(app.getPath('userData'), async value => (await safeStorage.decryptStringAsync(Buffer.from(value, 'base64'))).result);
     await vault.load(); store = new Store(app.getPath('userData'), vault);
-    await store.load(); manager = new Manager(store, emit, verifyHost); snmp = new SnmpService(store); networkQueries = new NetworkQueryService(store, snmp); registerIPC(); await createWindow();
+    await store.load(); manager = new Manager(store, emit, verifyHost); snmp = new SnmpService(store); networkQueries = new NetworkQueryService(store, snmp); registerWlanProtocol(devURL); registerIPC(); await createWindow();
   }).catch(error => { dialog.showErrorBox('Harbor SSH 启动失败', message(error)); app.exit(1); });
   app.on('window-all-closed', () => { manager?.dispose(); app.quit(); });
   app.on('before-quit', event => {
@@ -233,5 +239,5 @@ else {
     event.preventDefault(); manager.dispose();
     void manager.flushLogs().then(() => { exiting = true; app.quit(); });
   });
-  app.on('will-quit', () => { manager?.dispose(); networkQueries?.dispose(); snmp?.dispose(); vault?.lock(); });
+  app.on('will-quit', () => { stopWlan(); manager?.dispose(); networkQueries?.dispose(); snmp?.dispose(); vault?.lock(); });
 }

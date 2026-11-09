@@ -79,6 +79,7 @@ export interface DesktopAPI {
   unlock(password: string): Promise<void>;
   changePassword(current: string, next: string): Promise<void>;
   initial(): Promise<InitialState>;
+  openWlan(): Promise<string>;
   saveProfile(input: ProfileInput): Promise<Config>;
   deleteProfile(id: string): Promise<Config>;
   deleteProfiles(ids: string[]): Promise<Config>;
